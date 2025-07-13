@@ -1,0 +1,120 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../node_modules/.prisma/client"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+model User {
+  id            String        @id @default(cuid())
+  name          String?
+  email         String        @unique
+  emailVerified DateTime?
+  image         String?
+  password      String?
+  accounts      Account[]
+  sessions      Session[]
+  automations   Automation[]
+  followers     Follower[]
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Automation {
+  id          String   @id @default(cuid())
+  name        String
+  active      Boolean  @default(false)
+  triggerType String   // "comment", "dm", "follow_comment"
+  keywords    String   // Storing as JSON string for SQLite
+  actionType  String   // "message" or "ai"
+  message     String?
+  commentReply String?
+  aiPrompt    String?
+  posts       String   // Storing as JSON string for SQLite
+  dmMode      String   @default("normal") // "normal" or "smart_follower"
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Follower {
+  id              String   @id @default(cuid())
+  userId          String   // The user who owns the Instagram account
+  followerId      String   // Instagram-scoped ID of the follower
+  followerUsername String? // Username of the follower
+  isNew           Boolean  @default(true) // Whether this is a new follower
+  followedAt      DateTime @default(now())
+  lastCommentAt   DateTime? // Last time this follower commented
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([userId, followerId])
+}
+
+model AutomationLog {
+  id           String   @id @default(cuid())
+  automationId String
+  triggerType  String   // "comment", "dm", "follow_comment"
+  triggerText  String   // The text that triggered the automation
+  userId       String   // Instagram-scoped ID of the user who triggered it
+  username     String?  // Username of the user who triggered it
+  isNewFollower Boolean? // Whether the user was a new follower
+  triggeredAt  DateTime @default(now())
+  createdAt    DateTime @default(now())
+}
+
+model TrackedUser {
+  id        String   @id @default(cuid())
+  userId    String   // The user who owns the Instagram account
+  instagramUserId String // Instagram-scoped ID of the tracked user
+  status    String   // "follower", "first_commenter", or "trusted"
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, instagramUserId])
+}
+
+model ConversationSession {
+  id               String   @id @default(cuid())
+  userId           String   // The user who owns the Instagram account
+  instagramUserId  String   // Instagram-scoped ID of the user in conversation
+  automationId     String   // The automation that initiated this conversation
+  isActive         Boolean  @default(true)
+  conversationHistory String? // JSON string storing conversation history
+  lastActivityAt   DateTime @default(now())
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@unique([userId, instagramUserId, automationId])
+}

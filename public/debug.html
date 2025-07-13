@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Instagram Automation Debug</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .section { margin: 20px 0; padding: 15px; border: 1px solid #ddd; border-radius: 5px; }
+        .success { background-color: #d4edda; border-color: #c3e6cb; }
+        .error { background-color: #f8d7da; border-color: #f5c6cb; }
+        .info { background-color: #d1ecf1; border-color: #bee5eb; }
+        button { padding: 10px 15px; margin: 5px; cursor: pointer; }
+        pre { background: #f8f9fa; padding: 10px; border-radius: 3px; overflow-x: auto; }
+        .hidden { display: none; }
+    </style>
+</head>
+<body>
+    <h1>Instagram Automation Troubleshooting</h1>
+    
+    <div class="section info">
+        <h2>Step 1: Check Your Automation Configuration</h2>
+        <button onclick="checkAutomations()">Check Automations</button>
+        <div id="automations-result"></div>
+    </div>
+
+    <div class="section info">
+        <h2>Step 2: Test Webhook Endpoint</h2>
+        <button onclick="testWebhook()">Test Webhook</button>
+        <div id="webhook-result"></div>
+    </div>
+
+    <div class="section info">
+        <h2>Step 3: Simulate Comment</h2>
+        <p>Use this to test your automation logic without Instagram:</p>
+        <input type="text" id="comment-text" placeholder="Enter comment text (e.g., 'hello')" style="width: 200px;">
+        <input type="text" id="post-id" placeholder="Enter post ID" style="width: 200px;">
+        <button onclick="simulateComment()">Simulate Comment</button>
+        <div id="simulate-result"></div>
+    </div>
+
+    <div class="section info">
+        <h2>Step 4: Check Webhook Logs</h2>
+        <p>Watch your terminal console for these messages when you comment on Instagram:</p>
+        <ul>
+            <li><code>=== INSTAGRAM WEBHOOK RECEIVED ===</code></li>
+            <li><code>Processing Instagram comment:</code></li>
+            <li><code>Found X active comment automations</code></li>
+        </ul>
+    </div>
+
+    <script>
+        async function checkAutomations() {
+            const resultDiv = document.getElementById('automations-result');
+            resultDiv.innerHTML = '<p>Loading...</p>';
+            
+            try {
+                const response = await fetch('/api/debug/automations');
+                const data = await response.json();
+                
+                let html = '<h3>Your Configuration:</h3>';
+                html += `<pre>${JSON.stringify(data, null, 2)}</pre>`;
+                
+                // Check for common issues
+                html += '<h3>Issues Found:</h3>';
+                const issues = [];
+                
+                if (!data.instagramAccount) {
+                    issues.push('❌ No Instagram account connected');
+                } else if (!data.instagramAccount.hasAccessToken) {
+                    issues.push('❌ Instagram access token missing');
+                } else {
+                    issues.push('✅ Instagram account connected');
+                }
+                
+                const activeCommentAutomations = data.automations.filter(a => a.active && a.triggerType === 'comment');
+                if (activeCommentAutomations.length === 0) {
+                    issues.push('❌ No active comment automations found');
+                } else {
+                    issues.push(`✅ ${activeCommentAutomations.length} active comment automation(s)`);
+                    
+                    activeCommentAutomations.forEach(automation => {
+                        if (automation.keywords.length === 0) {
+                            issues.push(`❌ Automation "${automation.name}" has no keywords`);
+                        }
+                        if (automation.posts.length === 0) {
+                            issues.push(`⚠️ Automation "${automation.name}" has no posts selected (will trigger on ALL posts)`);
+                        }
+                        if (!automation.message && !automation.commentReply && !automation.aiPrompt) {
+                            issues.push(`❌ Automation "${automation.name}" has no response configured`);
+                        }
+                    });
+                }
+                
+                html += '<ul>' + issues.map(issue => `<li>${issue}</li>`).join('') + '</ul>';
+                
+                resultDiv.innerHTML = html;
+            } catch (error) {
+                resultDiv.innerHTML = `<div class="error"><p>Error: ${error.message}</p></div>`;
+            }
+        }
+
+        async function testWebhook() {
+            const resultDiv = document.getElementById('webhook-result');
+            resultDiv.innerHTML = '<p>Testing...</p>';
+            
+            try {
+                const response = await fetch('/api/webhooks/test', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ test: 'data' })
+                });
+                const data = await response.json();
+                
+                resultDiv.innerHTML = `<div class="success"><p>✅ Webhook endpoint is working!</p><pre>${JSON.stringify(data, null, 2)}</pre></div>`;
+            } catch (error) {
+                resultDiv.innerHTML = `<div class="error"><p>❌ Webhook test failed: ${error.message}</p></div>`;
+            }
+        }
+
+        async function simulateComment() {
+            const commentText = document.getElementById('comment-text').value;
+            const postId = document.getElementById('post-id').value;
+            const resultDiv = document.getElementById('simulate-result');
+            
+            if (!commentText) {
+                resultDiv.innerHTML = '<div class="error"><p>Please enter comment text</p></div>';
+                return;
+            }
+            
+            resultDiv.innerHTML = '<p>Simulating comment...</p>';
+            
+            try {
+                const response = await fetch('/api/test/comment', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ 
+                        commentText: commentText,
+                        postId: postId || 'test_post_123'
+                    })
+                });
+                const data = await response.json();
+                
+                resultDiv.innerHTML = `<div class="success"><p>✅ Comment simulation completed!</p><pre>${JSON.stringify(data, null, 2)}</pre><p><strong>Check your terminal console for detailed logs!</strong></p></div>`;
+            } catch (error) {
+                resultDiv.innerHTML = `<div class="error"><p>❌ Simulation failed: ${error.message}</p></div>`;
+            }
+        }
+    </script>
+</body>
+</html>

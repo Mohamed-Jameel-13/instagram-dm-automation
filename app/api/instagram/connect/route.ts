@@ -1,0 +1,70 @@
+import { type NextRequest, NextResponse } from "next/server"
+import { getServerSession } from "next-auth"
+import { authOptions } from "@/lib/auth"
+import { prisma } from "@/lib/db"
+import { getEnv } from "@/lib/env-server"
+
+export async function POST(req: NextRequest) {
+  try {
+    const session = await getServerSession(authOptions)
+    
+    if (!session?.user?.id) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    }
+
+    const { accessToken, instagramId, username, accountType } = await req.json()
+
+    if (!accessToken || !instagramId || !username) {
+      return NextResponse.json({ error: "Missing required fields" }, { status: 400 })
+    }
+
+    // Verify the access token is valid using Basic Display API
+    const testResponse = await fetch(`https://graph.instagram.com/me?fields=id,username&access_token=${accessToken}`)
+    
+    if (!testResponse.ok) {
+      return NextResponse.json({ error: "Invalid access token" }, { status: 400 })
+    }
+
+    const accountData = await testResponse.json()
+
+    if (accountData.id !== instagramId) {
+      return NextResponse.json({ error: "Token doesn't match provided Instagram ID" }, { status: 400 })
+    }
+
+    // Save or update the Instagram account connection
+    const account = await prisma.account.upsert({
+      where: {
+        provider_providerAccountId: {
+          provider: "instagram",
+          providerAccountId: instagramId,
+        },
+      },
+      update: {
+        access_token: accessToken,
+        refresh_token: null,
+        expires_at: null,
+      },
+      create: {
+        userId: session.user.id,
+        type: "oauth",
+        provider: "instagram",
+        providerAccountId: instagramId,
+        access_token: accessToken,
+        token_type: "bearer",
+        scope: "user_profile,user_media",
+      },
+    })
+
+    return NextResponse.json({
+      success: true,
+      account: {
+        id: instagramId,
+        username: username,
+        accountType: accountType,
+      },
+    })
+  } catch (error) {
+    console.error("Instagram connection error:", error)
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 })
+  }
+}

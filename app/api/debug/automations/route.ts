@@ -1,0 +1,68 @@
+import { type NextRequest, NextResponse } from "next/server"
+import { getServerSession } from "next-auth"
+import { authOptions } from "@/lib/auth"
+import { prisma } from "@/lib/db"
+
+export async function GET(req: NextRequest) {
+  try {
+    const session = await getServerSession(authOptions)
+    
+    if (!session?.user?.id) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    }
+
+    // Get all automations for the user
+    const automations = await prisma.automation.findMany({
+      where: {
+        userId: session.user.id,
+      },
+      include: {
+        user: true,
+      },
+    })
+
+    // Get user's Instagram account info
+    const instagramAccount = await prisma.account.findFirst({
+      where: {
+        userId: session.user.id,
+        provider: "instagram",
+      },
+    })
+
+    // Transform automations to show parsed data
+    const debugInfo = {
+      user: {
+        id: session.user.id,
+        email: session.user.email,
+      },
+      instagramAccount: instagramAccount ? {
+        id: instagramAccount.id,
+        providerAccountId: instagramAccount.providerAccountId,
+        hasAccessToken: !!instagramAccount.access_token,
+      } : null,
+      automations: automations.map(automation => ({
+        id: automation.id,
+        name: automation.name,
+        active: automation.active,
+        triggerType: automation.triggerType,
+        actionType: automation.actionType,
+        keywords: JSON.parse(automation.keywords || "[]"),
+        posts: JSON.parse(automation.posts || "[]"),
+        message: automation.message,
+        commentReply: automation.commentReply,
+        aiPrompt: automation.aiPrompt,
+        createdAt: automation.createdAt,
+        updatedAt: automation.updatedAt,
+      }))
+    }
+
+    return NextResponse.json(debugInfo)
+
+  } catch (error) {
+    console.error("Error in debug endpoint:", error)
+    return NextResponse.json({ 
+      error: "Failed to fetch debug info",
+      details: error instanceof Error ? error.message : "Unknown error"
+    }, { status: 500 })
+  }
+}
