@@ -1,14 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getPerformanceMetrics, clearPerformanceMetrics } from '@/app/api/webhooks/instagram/route'
+
+// Simple in-memory metrics storage for debugging
+let performanceMetrics: any[] = []
 
 export async function GET(req: NextRequest) {
   try {
-    const metrics = getPerformanceMetrics()
-    
     return NextResponse.json({
       success: true,
-      metrics: metrics,
-      count: metrics.length
+      metrics: performanceMetrics,
+      count: performanceMetrics.length,
+      message: 'Performance metrics debug endpoint'
     })
   } catch (error) {
     console.error('Error fetching performance metrics:', error)
@@ -18,7 +19,7 @@ export async function GET(req: NextRequest) {
 
 export async function DELETE(req: NextRequest) {
   try {
-    clearPerformanceMetrics()
+    performanceMetrics = []
     
     return NextResponse.json({
       success: true,
@@ -27,5 +28,18 @@ export async function DELETE(req: NextRequest) {
   } catch (error) {
     console.error('Error clearing performance metrics:', error)
     return NextResponse.json({ error: 'Failed to clear performance metrics' }, { status: 500 })
+  }
+}
+
+// Helper function to add metrics (can be imported by other routes)
+export function addPerformanceMetric(metric: any) {
+  performanceMetrics.push({
+    ...metric,
+    timestamp: new Date().toISOString()
+  })
+  
+  // Keep only last 100 metrics to prevent memory issues
+  if (performanceMetrics.length > 100) {
+    performanceMetrics = performanceMetrics.slice(-100)
   }
 } 
