@@ -1,5 +1,4 @@
 import { type NextRequest, NextResponse } from "next/server"
-import crypto from "crypto"
 
 // Use Edge Runtime for ultra-fast response
 export const runtime = 'edge'
@@ -13,19 +12,37 @@ const redis = new Redis({
   token: process.env.REDIS_TOKEN!,
 })
 
-// Webhook signature validation
-function validateInstagramSignature(body: string, signature: string | null): boolean {
+// Webhook signature validation using Web Crypto API (Edge Runtime compatible)
+async function validateInstagramSignature(body: string, signature: string | null): Promise<boolean> {
   if (!signature) return false
   
   const appSecret = process.env.INSTAGRAM_CLIENT_SECRET
   if (!appSecret) return false
   
-  const expectedSignature = crypto
-    .createHmac('sha256', appSecret)
-    .update(body, 'utf8')
-    .digest('hex')
-  
-  return `sha256=${expectedSignature}` === signature
+  try {
+    // Convert secret to Uint8Array
+    const secretKey = new TextEncoder().encode(appSecret)
+    const bodyData = new TextEncoder().encode(body)
+    
+    // Create HMAC key
+    const cryptoKey = await crypto.subtle.importKey(
+      'raw',
+      secretKey,
+      { name: 'HMAC', hash: 'SHA-256' },
+      false,
+      ['sign']
+    )
+    
+    // Generate HMAC
+    const hmacBuffer = await crypto.subtle.sign('HMAC', cryptoKey, bodyData)
+    const hmacArray = Array.from(new Uint8Array(hmacBuffer))
+    const expectedSignature = hmacArray.map(b => b.toString(16).padStart(2, '0')).join('')
+    
+    return `sha256=${expectedSignature}` === signature
+  } catch (error) {
+    console.error('Error validating signature:', error)
+    return false
+  }
 }
 
 export async function GET(req: NextRequest) {
@@ -55,7 +72,7 @@ export async function POST(req: NextRequest) {
     console.log(`🔐 [${requestId}] Validating Instagram webhook signature...`)
     
     // 2. Validate signature (fast check)
-    if (!validateInstagramSignature(body, signature)) {
+    if (!(await validateInstagramSignature(body, signature))) {
       console.error(`❌ [${requestId}] Invalid signature`)
       return NextResponse.json({ error: "Invalid signature" }, { status: 401 })
     }

@@ -37,16 +37,9 @@ getInstagramInfo.js
 /load-test/
 webhook-load-tester.js
 
-# Development documentation (optional - remove if you want to commit these)
-INSTAGRAM_ACCOUNT_TYPES.md
-SMART_FOLLOWER_SYSTEM.md
-FOLLOWER_POPULATION_SETUP.md
-TESTING_GUIDE.md
-COMMENT_TRIGGERED_DM_FIXES.md
-NEW_FOLLOWER_AUTOMATION_GUIDE.md
-FIREBASE_SETUP.md
-INSTAGRAM_APP_SETUP.md
-WEBHOOK_SETUP.md
+# Markdown files (except README.md)
+*.md
+!README.md
 
 # PowerShell installation scripts
 install-ngrok.ps1
