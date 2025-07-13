@@ -27,10 +27,7 @@ AZURE_OPENAI_ENDPOINT=https://your-resource-name.openai.azure.com
 AZURE_OPENAI_DEPLOYMENT_NAME=your_deployment_name
 AZURE_OPENAI_API_VERSION=2023-05-15
 
-# Stripe for Payments
-STRIPE_SECRET_KEY=your_stripe_secret_key
-STRIPE_WEBHOOK_SECRET=your_stripe_webhook_secret
-NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=your_stripe_publishable_key
+
 
 # App Configuration
 NEXT_PUBLIC_APP_URL=http://localhost:3000
@@ -62,16 +59,6 @@ NEXT_PUBLIC_APP_URL=http://localhost:3000
 4. Go to "Model Deployments" and create a deployment
    - `AZURE_OPENAI_DEPLOYMENT_NAME`: The name you give to your deployment
    - `AZURE_OPENAI_API_VERSION`: Use the latest version (e.g., "2023-05-15")
-
-#### Stripe
-1. Create an account on [Stripe](https://stripe.com/)
-2. Go to the Developers section → API keys
-   - `STRIPE_SECRET_KEY`: Secret key (starts with "sk_")
-   - `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY`: Publishable key (starts with "pk_")
-3. For webhook secret:
-   - Install [Stripe CLI](https://stripe.com/docs/stripe-cli)
-   - Run `stripe listen --forward-to localhost:3000/api/webhooks/stripe`
-   - The webhook signing secret will be displayed in the terminal
 
 #### App Configuration
 - `NEXT_PUBLIC_APP_URL`: Your application URL (use `http://localhost:3000` for development)
