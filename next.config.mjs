@@ -1,3 +1,9 @@
+import { fileURLToPath } from 'url'
+import { dirname, resolve } from 'path'
+
+const __filename = fileURLToPath(import.meta.url)
+const __dirname = dirname(__filename)
+
 let userConfig = undefined
 try {
   // try to import ESM first
@@ -58,7 +64,7 @@ const nextConfig = {
     // Add alias resolution for @/* paths
     config.resolve.alias = {
       ...config.resolve.alias,
-      '@': require('path').resolve(__dirname),
+      '@': resolve(__dirname),
     };
 
     // Ensure proper variable names in production
