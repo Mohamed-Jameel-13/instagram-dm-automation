@@ -1,11 +1,17 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { getServerSession } from "next-auth"
-import { authOptions } from "@/lib/auth"
 import { getInstagramAPI } from "@/lib/instagram-api"
+import { getUserIdFromRequest } from "@/lib/firebase-auth-server"
 
 export async function GET(req: NextRequest) {
   try {
-    const userId = "firebase-user-id" // TODO: Implement Firebase Auth
+    // Get user ID from query parameters first (from Firebase Auth on client)
+    const url = new URL(req.url)
+    let userId = url.searchParams.get('userId')
+    
+    if (!userId) {
+      // Fallback to server-side extraction
+      userId = await getUserIdFromRequest(req)
+    }
     
     if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })

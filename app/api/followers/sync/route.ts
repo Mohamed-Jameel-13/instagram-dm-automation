@@ -1,9 +1,17 @@
 import { NextRequest, NextResponse } from "next/server"
 import { followerTracker } from "@/lib/follower-tracker"
+import { getUserIdFromRequest } from "@/lib/firebase-auth-server"
 
 export async function POST(req: NextRequest) {
   try {
-    const userId = "firebase-user-id" // TODO: Implement Firebase Auth
+    // Get user ID from request body first (from Firebase Auth on client)
+    const body = await req.json().catch(() => ({}))
+    let userId = body.userId
+    
+    if (!userId) {
+      // Fallback to server-side extraction
+      userId = await getUserIdFromRequest(req)
+    }
     
     if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
@@ -38,7 +46,14 @@ export async function POST(req: NextRequest) {
 
 export async function GET(req: NextRequest) {
   try {
-    const userId = "firebase-user-id" // TODO: Implement Firebase Auth
+    // Get user ID from query parameters first (from Firebase Auth on client)
+    const url = new URL(req.url)
+    let userId = url.searchParams.get('userId')
+    
+    if (!userId) {
+      // Fallback to server-side extraction
+      userId = await getUserIdFromRequest(req)
+    }
     
     if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })

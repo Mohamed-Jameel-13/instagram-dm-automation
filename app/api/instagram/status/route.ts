@@ -1,11 +1,24 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { getFirebaseServerUser } from "@/lib/firebase-auth-server"
+import { getUserIdFromRequest } from "@/lib/firebase-auth-server"
 import { prisma } from "@/lib/db"
 
 export async function GET(req: NextRequest) {
   try {
-      // TODO: Implement Firebase Auth check
-  const userId = "firebase-user-id" // Temporary placeholder
+    // Get user ID from query parameters first (from Firebase Auth on client)
+    const url = new URL(req.url)
+    let userId = url.searchParams.get('userId')
+    
+    if (!userId) {
+      // Fallback to server-side extraction
+      userId = await getUserIdFromRequest(req)
+    }
+    
+
+    
+    if (!userId) {
+      console.log('❌ No user ID found')
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    }
 
     // Check if user has an Instagram account connected
     const account = await prisma.account.findFirst({
@@ -14,7 +27,7 @@ export async function GET(req: NextRequest) {
         provider: "instagram",
       },
     })
-
+    
     if (!account) {
       return NextResponse.json({ connected: false })
     }

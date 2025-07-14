@@ -1,11 +1,21 @@
 import { NextRequest, NextResponse } from "next/server"
-// TODO: Implement Firebase Auth
 import { prisma } from "@/lib/db"
+import { getUserIdFromRequest } from "@/lib/firebase-auth-server"
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
-    // TODO: Implement Firebase Auth check
-    const userId = "firebase-user-id" // Temporary placeholder
+    // Get user ID from query parameters first (from Firebase Auth on client)
+    const url = new URL(req.url)
+    let userId = url.searchParams.get('userId')
+    
+    if (!userId) {
+      // Fallback to server-side extraction
+      userId = await getUserIdFromRequest(req)
+    }
+    
+    if (!userId) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    }
 
     const { id } = await params
     const automation = await prisma.automation.findFirst({
@@ -47,14 +57,21 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const userId = "firebase-user-id" // TODO: Implement Firebase Auth
+    // Parse request body first
+    const body = await req.json()
+    
+    // Prioritize user ID from request body (from Firebase Auth on client)
+    let userId = body.userId
+    if (!userId) {
+      // Fallback to server-side extraction
+      userId = await getUserIdFromRequest(req)
+    }
     
     if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
     const { id } = await params
-    const body = await req.json()
     const updateData: any = {}
 
     // Only update fields that are provided
@@ -100,7 +117,14 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const userId = "firebase-user-id" // TODO: Implement Firebase Auth
+    // Get user ID from query parameters first (from Firebase Auth on client)
+    const url = new URL(req.url)
+    let userId = url.searchParams.get('userId')
+    
+    if (!userId) {
+      // Fallback to server-side extraction
+      userId = await getUserIdFromRequest(req)
+    }
     
     if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })

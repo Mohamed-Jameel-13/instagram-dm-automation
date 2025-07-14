@@ -47,10 +47,14 @@ export default function AutomationsPage() {
     const fetchAutomations = async () => {
       if (user?.uid) {
         try {
-          const response = await fetch("/api/automations")
+          console.log('🔍 Fetching automations for user:', user.uid)
+          const response = await fetch(`/api/automations?userId=${user.uid}`)
           if (response.ok) {
             const data = await response.json()
+            console.log('✅ Automations fetched:', data)
             setAutomations(data.automations || [])
+          } else {
+            console.error('❌ Failed to fetch automations:', response.status)
           }
         } catch (error) {
           console.error("Error fetching automations:", error)
@@ -69,7 +73,7 @@ export default function AutomationsPage() {
       if (user?.uid) {
         try {
           setIsLoading(true)
-          const response = await fetch("/api/instagram/status")
+          const response = await fetch(`/api/instagram/status?userId=${user.uid}`)
           if (response.ok) {
             const data = await response.json()
             setIsInstagramConnected(data.connected)
@@ -112,6 +116,7 @@ export default function AutomationsPage() {
           triggerType: "dm",
           message: "",
           active: false,
+          userId: user?.uid, // Send the Firebase Auth user ID
         }),
       })
 
@@ -159,6 +164,21 @@ export default function AutomationsPage() {
   const handleConnectionSuccess = () => {
     // Refresh the Instagram connection status when user connects
     setIsInstagramConnected(true)
+    // Also refresh the automations list
+    if (user?.uid) {
+      const fetchAutomations = async () => {
+        try {
+          const response = await fetch(`/api/automations?userId=${user.uid}`)
+          if (response.ok) {
+            const data = await response.json()
+            setAutomations(data.automations || [])
+          }
+        } catch (error) {
+          console.error("Error fetching automations:", error)
+        }
+      }
+      fetchAutomations()
+    }
   }
 
   if (isLoading) {

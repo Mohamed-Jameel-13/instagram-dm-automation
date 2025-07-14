@@ -23,27 +23,13 @@ export function InstagramConnection({ onConnectionSuccess, compact = false }: In
   const [isConnecting, setIsConnecting] = useState(false)
   const [accessToken, setAccessToken] = useState("")
   const [connectedAccount, setConnectedAccount] = useState<InstagramAccount | null>(null)
+  const [componentId] = useState(() => Math.random().toString(36).substring(2, 9))
 
   const handleOAuthConnection = async () => {
     setIsConnecting(true)
     try {
-      const result = await signIn("instagram", { 
-        redirect: false,
-        callbackUrl: "/dashboard"
-      })
-      
-      if (result?.error) {
-        if (result.error === "Configuration") {
-          throw new Error("Instagram OAuth is not configured. Please use the manual token method or configure OAuth credentials.")
-        }
-        throw new Error(result.error)
-      }
-      
-      // If successful, the page will redirect and the connection will be handled by NextAuth
-      toast({
-        title: "Redirecting to Instagram...",
-        description: "You'll be redirected to Instagram to authorize the connection",
-      })
+      // Instagram OAuth is not configured with Firebase Auth
+      throw new Error("Instagram OAuth is not configured with Firebase Auth. Please use the manual token method below.")
     } catch (error) {
       console.error("Instagram OAuth error:", error)
       toast({
@@ -66,16 +52,65 @@ export function InstagramConnection({ onConnectionSuccess, compact = false }: In
       return
     }
 
+    // Clean and validate token
+    const cleanToken = accessToken.trim()
+    
+    // Check if user pasted an error message instead of token
+    if (cleanToken.toLowerCase().includes('error') || cleanToken.toLowerCase().includes('invalid')) {
+      toast({
+        title: "Invalid Token",
+        description: "It looks like you pasted an error message. Please paste only the actual Instagram access token.",
+        variant: "destructive",
+      })
+      return
+    }
+    
+    // Basic token validation
+    if (cleanToken.length < 50) {
+      toast({
+        title: "Invalid Token Format",
+        description: "Instagram access tokens are much longer (200+ characters). Please check your token.",
+        variant: "destructive",
+      })
+      return
+    }
+    
+    // Check token format
+    if (!cleanToken.startsWith('IG') && !cleanToken.startsWith('EAAC') && !cleanToken.startsWith('IGQVJ')) {
+      toast({
+        title: "Incorrect Token Type",
+        description: "Please use Instagram Basic Display API tokens (usually start with 'IGQVJ' or 'IG').",
+        variant: "destructive",
+      })
+      return
+    }
+
     setIsConnecting(true)
     try {
       // Test the access token using Basic Display API
-      const response = await fetch(`https://graph.instagram.com/me?fields=id,username&access_token=${accessToken}`)
+      console.log('Testing access token...')
+      const response = await fetch(`https://graph.instagram.com/me?fields=id,username&access_token=${cleanToken}`)
       
       if (!response.ok) {
-        throw new Error("Invalid access token")
+        // Get more detailed error information
+        const errorData = await response.text()
+        console.error('Instagram API error:', errorData)
+        console.error('Response status:', response.status)
+        
+        try {
+          const parsedError = JSON.parse(errorData)
+          if (parsedError.error && parsedError.error.message) {
+            throw new Error(`Instagram API Error: ${parsedError.error.message}`)
+          }
+        } catch {
+          // If parsing fails, use the raw error
+        }
+        
+        throw new Error(`Invalid access token (Status: ${response.status}). Please check your token and try again.`)
       }
 
       const accountData = await response.json()
+      console.log('Instagram account data:', accountData)
 
       // Save the connection to your database
       const saveResponse = await fetch("/api/instagram/connect", {
@@ -84,10 +119,11 @@ export function InstagramConnection({ onConnectionSuccess, compact = false }: In
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          accessToken,
+          accessToken: cleanToken,
           instagramId: accountData.id,
           username: accountData.username,
           accountType: "personal", // Basic Display API doesn't have account_type
+          userId: user?.uid, // Send the Firebase Auth user ID
         }),
       })
 
@@ -107,6 +143,10 @@ export function InstagramConnection({ onConnectionSuccess, compact = false }: In
       })
     } catch (error) {
       console.error("Instagram connection error:", error)
+      
+      // Clear the token field on error to force re-entry
+      setAccessToken("")
+      
       toast({
         title: "Connection Failed",
         description: error instanceof Error ? error.message : "Please check your access token and try again",
@@ -181,30 +221,14 @@ export function InstagramConnection({ onConnectionSuccess, compact = false }: In
   if (compact) {
     return (
       <div className="space-y-3">
-        <Button 
-          onClick={handleOAuthConnection} 
-          disabled={isConnecting}
-          size="sm"
-          className="w-full"
-          variant="outline"
-        >
-          <Instagram className="mr-2 h-4 w-4" />
-          {isConnecting ? "Connecting..." : "Connect Instagram"}
-        </Button>
+        {/* OAuth button removed - not configured with Firebase Auth */}
         
-        <div className="relative">
-          <div className="absolute inset-0 flex items-center">
-            <span className="w-full border-t" />
-          </div>
-          <div className="relative flex justify-center text-xs uppercase">
-            <span className="bg-background px-2 text-muted-foreground">Or</span>
-          </div>
-        </div>
+        {/* Divider removed since OAuth is not available */}
         
         <div className="space-y-2">
-          <Label htmlFor="accessToken" className="text-sm">Manual Access Token</Label>
+          <Label htmlFor={`accessToken-${componentId}`} className="text-sm">Manual Access Token</Label>
           <Input
-            id="accessToken"
+            id={`accessToken-${componentId}`}
             type="password"
             placeholder="IGAAR2zUZBc..."
             value={accessToken}
@@ -236,24 +260,9 @@ export function InstagramConnection({ onConnectionSuccess, compact = false }: In
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <Button 
-            onClick={handleOAuthConnection} 
-            disabled={isConnecting}
-            className="w-full"
-            size="lg"
-          >
-            <Instagram className="mr-2 h-5 w-5" />
-            {isConnecting ? "Connecting..." : "Connect with Instagram"}
-          </Button>
+          {/* OAuth button removed - not configured with Firebase Auth */}
           
-          <div className="relative">
-            <div className="absolute inset-0 flex items-center">
-              <span className="w-full border-t" />
-            </div>
-            <div className="relative flex justify-center text-xs uppercase">
-              <span className="bg-background px-2 text-muted-foreground">Or use manual token</span>
-            </div>
-          </div>
+          {/* Divider removed since OAuth is not available */}
           
           <div className="space-y-2">
             <Label htmlFor="accessToken">Instagram Access Token</Label>
@@ -264,9 +273,11 @@ export function InstagramConnection({ onConnectionSuccess, compact = false }: In
               value={accessToken}
               onChange={(e) => setAccessToken(e.target.value)}
             />
-            <p className="text-xs text-gray-500">
-              Paste your Instagram access token here for manual connection
-            </p>
+            <div className="text-xs text-gray-500 space-y-1">
+              <p>Paste your Instagram Basic Display API access token here</p>
+              <p><strong>Valid token example:</strong> IGQVJ... (200+ characters)</p>
+              <p><strong>⚠️ Don't paste error messages</strong> - only the actual token!</p>
+            </div>
           </div>
           
           <Button 
@@ -285,18 +296,27 @@ export function InstagramConnection({ onConnectionSuccess, compact = false }: In
         <CardHeader>
           <CardTitle className="text-sm">📋 Setup Instructions</CardTitle>
         </CardHeader>
-        <CardContent className="space-y-2 text-sm">
+        <CardContent className="space-y-3 text-sm">
           <div>
-            <p className="font-medium">OAuth Method (Recommended)</p>
-            <p className="text-gray-600">Click "Connect with Instagram" for easy setup with OAuth</p>
+            <p className="font-medium">📱 Instagram Token Requirements</p>
+            <ul className="text-gray-600 space-y-1 mt-2">
+              <li>• Use <strong>Instagram Basic Display API</strong> tokens</li>
+              <li>• Personal Instagram accounts work best</li>
+              <li>• Token should be long-lived (60 days)</li>
+              <li>• Token format: IGQVJ... (very long string)</li>
+            </ul>
           </div>
           <div>
-            <p className="font-medium">Manual Token Method</p>
-            <p className="text-gray-600">Use your existing Instagram access token for instant connection</p>
+            <p className="font-medium">🔧 Common Issues</p>
+            <ul className="text-gray-600 space-y-1 mt-2">
+              <li>• Expired tokens (regenerate from Instagram)</li>
+              <li>• Business account tokens (try personal account)</li>
+              <li>• Short-lived tokens (exchange for long-lived)</li>
+            </ul>
           </div>
-          <div className="text-xs text-gray-500 mt-4">
-            <p>✅ Webhook URL: https://instagram-automation-writesparkai.loca.lt/api/webhooks/instagram</p>
-            <p>✅ Verify Token: verify_ig_webhook_2024_a7f3k9m2n8q1</p>
+          <div className="text-xs text-gray-500 mt-4 space-y-1">
+            <p>🔗 Webhook URL: https://instagram-automation-writesparkai.loca.lt/api/webhooks/instagram</p>
+            <p>🔐 Verify Token: verify_ig_webhook_2024_a7f3k9m2n8q1</p>
           </div>
         </CardContent>
       </Card>

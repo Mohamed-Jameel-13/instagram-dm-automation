@@ -5,7 +5,8 @@ import { prisma } from "@/lib/db"
 
 export async function POST(req: NextRequest) {
   try {
-    const userId = "firebase-user-id" // TODO: Implement Firebase Auth
+    // This is a test route - should not be used in production
+  const userId = "firebase-user-id" // Test only - should be replaced with real auth
     
     if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })

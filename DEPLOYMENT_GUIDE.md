@@ -36,8 +36,8 @@ REDIS_TOKEN="ATCpAAIjcDEyZTEwMTYwMDY3MGQ0NTNkODMwZjk4ODY2NWEwYzgyMnAxMA"
 # Instagram API
 INSTAGRAM_CLIENT_ID="1234567890"
 INSTAGRAM_CLIENT_SECRET="a1b2c3d4e5"
-INSTAGRAM_REDIRECT_URI="https://your-app.vercel.app/api/auth/callback/instagram"
-INSTAGRAM_VERIFY_TOKEN="your_webhook_verify_token"
+INSTAGRAM_REDIRECT_URI=https://instagram-dm-automation.vercel.app/api/auth/callback/instagram
+INSTAGRAM_VERIFY_TOKEN=verify_ig_webhook_2024_a7f3k9m2n8q1
 
 # Authentication
 NEXTAUTH_SECRET="your_generated_secret_here"
@@ -50,8 +50,8 @@ AZURE_OPENAI_DEPLOYMENT_NAME="your_deployment_name"
 AZURE_OPENAI_API_VERSION="2023-05-15"
 
 # API Configuration (for Cloudflare Worker)
-API_BASE_URL="https://your-app.vercel.app"
-API_TOKEN="secure_token_for_worker_auth"
+API_BASE_URL=https://instagram-dm-automation.vercel.app
+API_TOKEN=asbfusyafuiasfkjskfbsdfskf12
 ```
 
 ## Step 2: Service Setup

@@ -16,6 +16,7 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Label } from "@/components/ui/label"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { FollowerSync } from "@/components/follower-sync"
+import { useFirebaseAuth } from "@/components/firebase-auth"
 
 interface Automation {
   id: string
@@ -43,6 +44,7 @@ interface InstagramPost {
 export default function AutomationEditorPage({ params }: { params: Promise<{ id: string }> }) {
   const resolvedParams = use(params);
   const id = resolvedParams.id;
+  const { user, loading } = useFirebaseAuth()
   
   const [automation, setAutomation] = useState<Automation>({
     id: id,
@@ -61,9 +63,11 @@ export default function AutomationEditorPage({ params }: { params: Promise<{ id:
   // Load automation data
   useEffect(() => {
     const fetchAutomation = async () => {
+      if (!user?.uid) return
+      
       try {
         setIsLoading(true)
-        const response = await fetch(`/api/automations/${id}`)
+        const response = await fetch(`/api/automations/${id}?userId=${user.uid}`)
         if (response.ok) {
           const data = await response.json()
           setAutomation({
@@ -103,14 +107,16 @@ export default function AutomationEditorPage({ params }: { params: Promise<{ id:
     }
 
     fetchAutomation()
-  }, [id])
+  }, [id, user])
 
   // Fetch Instagram posts
   const fetchInstagramPosts = async () => {
+    if (!user?.uid) return
+    
     try {
       setLoadingPosts(true)
       setPostsError("")
-      const response = await fetch("/api/instagram/posts?limit=12")
+      const response = await fetch(`/api/instagram/posts?limit=12&userId=${user.uid}`)
       
       if (response.ok) {
         const data = await response.json()
@@ -136,6 +142,8 @@ export default function AutomationEditorPage({ params }: { params: Promise<{ id:
 
   // Auto-save function
   const saveAutomation = async (updatedAutomation: Automation) => {
+    if (!user?.uid) return
+    
     try {
       setIsSaving(true)
       const response = await fetch(`/api/automations/${id}`, {
@@ -154,6 +162,7 @@ export default function AutomationEditorPage({ params }: { params: Promise<{ id:
           posts: updatedAutomation.posts,
           active: updatedAutomation.active,
           dmMode: updatedAutomation.dmMode,
+          userId: user.uid,
         }),
       })
 
@@ -169,20 +178,30 @@ export default function AutomationEditorPage({ params }: { params: Promise<{ id:
 
   // Debounced save
   useEffect(() => {
-    if (!isLoading) {
+    if (!isLoading && !loading) {
       const timeoutId = setTimeout(() => {
         saveAutomation(automation)
       }, 1000)
 
       return () => clearTimeout(timeoutId)
     }
-  }, [automation, isLoading])
+  }, [automation, isLoading, loading, user])
 
-  if (isLoading) {
+  if (isLoading || loading) {
     return (
       <div className="space-y-8">
         <div className="text-center py-12">
           <p className="text-muted-foreground">Loading automation...</p>
+        </div>
+      </div>
+    )
+  }
+
+  if (!user) {
+    return (
+      <div className="space-y-8">
+        <div className="text-center py-12">
+          <p className="text-muted-foreground">Please log in to view this automation.</p>
         </div>
       </div>
     )

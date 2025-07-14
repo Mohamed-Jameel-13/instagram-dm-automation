@@ -1,18 +1,25 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { getServerSession } from "next-auth"
-import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/db"
 import { getEnv } from "@/lib/env-server"
+import { getUserIdFromRequest } from "@/lib/firebase-auth-server"
+import { ensureUserExists } from "@/lib/user-utils"
 
 export async function POST(req: NextRequest) {
   try {
-    const userId = "firebase-user-id" // TODO: Implement Firebase Auth
+    // Parse the request body first
+    const body = await req.json()
+    const { accessToken, instagramId, username, accountType, userId: requestUserId } = body
+    
+    // Prioritize user ID from request body (from Firebase Auth on client)
+    let userId = requestUserId
+    if (!userId) {
+      // Fallback to server-side extraction
+      userId = await getUserIdFromRequest(req)
+    }
     
     if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
-
-    const { accessToken, instagramId, username, accountType } = await req.json()
 
     if (!accessToken || !instagramId || !username) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 })
@@ -30,6 +37,9 @@ export async function POST(req: NextRequest) {
     if (accountData.id !== instagramId) {
       return NextResponse.json({ error: "Token doesn't match provided Instagram ID" }, { status: 400 })
     }
+
+    // Ensure the user exists in our database first
+    await ensureUserExists(userId, username)
 
     // Save or update the Instagram account connection
     const account = await prisma.account.upsert({

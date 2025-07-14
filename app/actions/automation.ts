@@ -20,11 +20,10 @@ const automationSchema = z.object({
 })
 
 export async function createAutomation(formData: FormData) {
-  const userId = "firebase-user-id" // TODO: Implement Firebase Auth
-
-  if (!null // TODO: Implement Firebase Auth) {
-    return { error: "Unauthorized" }
-  }
+  // Note: Server actions are deprecated for this project in favor of API routes
+  // This function is kept for compatibility but should not be used in production
+  throw new Error("Server actions are deprecated. Use API routes instead.")
+}
 
   const rawData = {
     name: formData.get("name") as string,
@@ -56,7 +55,9 @@ export async function createAutomation(formData: FormData) {
 }
 
 export async function updateAutomation(formData: FormData) {
-  const userId = "firebase-user-id" // TODO: Implement Firebase Auth
+  // Note: Server actions are deprecated for this project in favor of API routes
+  // This function is kept for compatibility but should not be used in production
+  throw new Error("Server actions are deprecated. Use API routes instead.")
 
   if (!null // TODO: Implement Firebase Auth) {
     return { error: "Unauthorized" }
@@ -98,7 +99,9 @@ export async function updateAutomation(formData: FormData) {
 }
 
 export async function deleteAutomation(id: string) {
-  const userId = "firebase-user-id" // TODO: Implement Firebase Auth
+  // Note: Server actions are deprecated for this project in favor of API routes
+  // This function is kept for compatibility but should not be used in production
+  throw new Error("Server actions are deprecated. Use API routes instead.")
 
   if (!null // TODO: Implement Firebase Auth) {
     return { error: "Unauthorized" }

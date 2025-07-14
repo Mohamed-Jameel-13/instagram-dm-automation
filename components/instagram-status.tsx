@@ -4,7 +4,7 @@ import { useFirebaseAuth } from "@/components/firebase-auth"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
 import { Instagram } from "lucide-react"
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { ReloadIcon, CheckCircledIcon } from "@radix-ui/react-icons"
 import { InstagramConnection } from "@/components/instagram-connection"
@@ -28,28 +28,50 @@ export function InstagramConnectionStatus({
   const [isConnecting, setIsConnecting] = useState(false)
   const [connectionError, setConnectionError] = useState("")
   const [connectedAccount, setConnectedAccount] = useState<InstagramAccount | null>(null)
+  const [isChecking, setIsChecking] = useState(false)
 
   // Check for existing Instagram connection on component mount
-  useEffect(() => {
-    const checkInstagramConnection = async () => {
-      if (user?.uid) {
-        try {
-          const response = await fetch("/api/instagram/status")
-          if (response.ok) {
-            const data = await response.json()
-            if (data.connected) {
-              setConnectedAccount(data.account)
-              onConnected()
-            }
+  const checkInstagramConnection = useCallback(async () => {
+    if (user?.uid) {
+      try {
+        setIsChecking(true)
+        console.log('🔍 Checking Instagram connection for user:', user.uid)
+        const response = await fetch(`/api/instagram/status?userId=${user.uid}`)
+        console.log('🔍 Instagram status response:', response.status, response.ok)
+        
+        if (response.ok) {
+          const data = await response.json()
+          console.log('🔍 Instagram status data:', data)
+          
+          if (data.connected) {
+            console.log('✅ Instagram connected:', data.account)
+            setConnectedAccount(data.account)
+            onConnected()
+          } else {
+            console.log('❌ Instagram not connected')
+            setConnectedAccount(null)
           }
-        } catch (error) {
-          console.error("Error checking Instagram status:", error)
+        } else {
+          console.log('❌ Instagram status check failed:', response.status)
+          const errorData = await response.text()
+          console.log('❌ Error response:', errorData)
         }
+      } catch (error) {
+        console.error("Error checking Instagram status:", error)
+      } finally {
+        setIsChecking(false)
       }
+    } else {
+      console.log('❌ No user UID available')
+      setIsChecking(false)
     }
+  }, [user?.uid, onConnected, loading])
 
-    checkInstagramConnection()
-  }, [session, onConnected])
+  useEffect(() => {
+    if (!loading) {
+      checkInstagramConnection()
+    }
+  }, [checkInstagramConnection, loading])
 
   const handleConnectionSuccess = (account: InstagramAccount) => {
     setConnectedAccount(account)
