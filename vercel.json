@@ -1,23 +1,11 @@
 {
-  "framework": "nextjs",
   "buildCommand": "prisma generate && next build",
   "installCommand": "npm install && npx prisma generate",
   "functions": {
     "app/api/**/*.ts": {
-      "runtime": "nodejs18.x",
-      "maxDuration": 30
-    },
-    "app/api/webhooks/**/*.ts": {
-      "runtime": "edge",
       "maxDuration": 10
     }
   },
-  "crons": [
-    {
-      "path": "/api/automation-processor",
-      "schedule": "0 0 * * *"
-    }
-  ],
   "env": {
     "PRISMA_GENERATE_DATAPROXY": "true"
   }
