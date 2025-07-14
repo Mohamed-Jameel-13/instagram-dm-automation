@@ -59,7 +59,7 @@ export async function GET(req: NextRequest) {
   const challenge = searchParams.get('hub.challenge')
 
   // Verify webhook subscription
-  if (mode === 'subscribe' && token === process.env.INSTAGRAM_VERIFY_TOKEN) {
+  if (mode === 'subscribe' && token === process.env.INSTAGRAM_WEBHOOK_VERIFY_TOKEN) {
     console.log('Instagram webhook verified successfully')
     return new Response(challenge)
   }
