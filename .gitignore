@@ -95,3 +95,4 @@ dist/
 *.backup
 *.bak
 *.tmp
+.vercel

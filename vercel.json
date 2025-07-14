@@ -16,7 +16,7 @@
   "crons": [
     {
       "path": "/api/automation-processor",
-      "schedule": "*/5 * * * *"
+      "schedule": "0 0 * * *"
     }
   ],
   "env": {
