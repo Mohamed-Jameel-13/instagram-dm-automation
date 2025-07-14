@@ -50,6 +50,12 @@ export async function POST(req: NextRequest) {
       
       try {
         const event = JSON.parse(eventData[1])
+        
+        // Validate event structure
+        if (!event.requestId || !event.body) {
+          throw new Error('Invalid event structure - missing requestId or body')
+        }
+        
         console.log(`⚡ [${requestId}] Processing event: ${event.requestId}`)
         
         // Process the Instagram event (this triggers automations)
@@ -66,17 +72,27 @@ export async function POST(req: NextRequest) {
       } catch (error) {
         console.error(`💥 [${requestId}] Failed to process event:`, error)
         
-        // Move failed event to failed queue for later analysis
-        try {
-          await redis.lpush('failed_events', eventData[1])
-        } catch (e) {
-          console.error(`💥 [${requestId}] Failed to queue failed event:`, e)
+        // Check if it's a JSON parsing error (invalid legacy event)
+        const isInvalidJson = error instanceof SyntaxError || 
+                             (error instanceof Error && error.message.includes('Invalid event structure'))
+        
+        if (isInvalidJson) {
+          console.log(`🗑️ [${requestId}] Discarding invalid/legacy event`)
+          // Don't queue invalid events, just discard them
+        } else {
+          // Move genuinely failed events to failed queue for later analysis
+          try {
+            await redis.lpush('failed_events', eventData[1])
+          } catch (e) {
+            console.error(`💥 [${requestId}] Failed to queue failed event:`, e)
+          }
         }
         
         results.push({
           eventId: 'unknown',
           success: false,
-          error: error instanceof Error ? error.message : 'Unknown error'
+          error: error instanceof Error ? error.message : 'Unknown error',
+          discarded: isInvalidJson
         })
         
         failedCount++

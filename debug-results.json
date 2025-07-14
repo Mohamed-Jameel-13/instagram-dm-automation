@@ -1,0 +1,36 @@
+{
+  "steps": {
+    "queue": {
+      "status": "failed",
+      "error": "Unexpected token '<', \"<!doctype \"... is not valid JSON"
+    },
+    "automations": {
+      "status": "failed",
+      "error": "Unexpected token '<', \"<!doctype \"... is not valid JSON"
+    },
+    "processing": {
+      "status": "failed",
+      "error": "Unexpected token '<', \"<!doctype \"... is not valid JSON"
+    },
+    "webhook": {
+      "status": "failed",
+      "error": "Unexpected token '<', \"<!doctype \"... is not valid JSON"
+    },
+    "commentTest": {
+      "status": "failed",
+      "error": "Unexpected token '<', \"<!doctype \"... is not valid JSON"
+    }
+  },
+  "issues": [
+    "Queue processor not accessible",
+    "Cannot fetch automations",
+    "Queue processing not working",
+    "Webhook endpoint not accessible",
+    "Missing environment variable: REDIS_URL",
+    "Missing environment variable: REDIS_TOKEN",
+    "Missing environment variable: INSTAGRAM_CLIENT_SECRET",
+    "Missing environment variable: INSTAGRAM_WEBHOOK_VERIFY_TOKEN",
+    "Comment test endpoint not working"
+  ],
+  "recommendations": []
+}
