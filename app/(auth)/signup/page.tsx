@@ -151,6 +151,7 @@ export default function SignupPage() {
                       value={formData.firstName}
                       onChange={handleInputChange}
                       className="pl-10 h-11 border-2 focus:border-purple-500 transition-colors"
+                      autoComplete="given-name"
                       required
                     />
                   </div>
@@ -170,6 +171,7 @@ export default function SignupPage() {
                       value={formData.lastName}
                       onChange={handleInputChange}
                       className="pl-10 h-11 border-2 focus:border-purple-500 transition-colors"
+                      autoComplete="family-name"
                       required
                     />
                   </div>
@@ -190,6 +192,7 @@ export default function SignupPage() {
                     value={formData.email}
                     onChange={handleInputChange}
                     className="pl-10 h-11 border-2 focus:border-purple-500 transition-colors"
+                    autoComplete="email"
                     required
                   />
                 </div>
@@ -209,6 +212,7 @@ export default function SignupPage() {
                     value={formData.password}
                     onChange={handleInputChange}
                     className="pl-10 pr-10 h-11 border-2 focus:border-purple-500 transition-colors"
+                    autoComplete="new-password"
                     required
                   />
                   <button
@@ -235,6 +239,7 @@ export default function SignupPage() {
                     value={formData.confirmPassword}
                     onChange={handleInputChange}
                     className="pl-10 pr-10 h-11 border-2 focus:border-purple-500 transition-colors"
+                    autoComplete="new-password"
                     required
                   />
                   <button

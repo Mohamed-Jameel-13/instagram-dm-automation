@@ -109,6 +109,7 @@ export default function LoginPage() {
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     className="pl-10 h-11 border-2 focus:border-blue-500 transition-colors"
+                    autoComplete="email"
                     required
                   />
                 </div>
@@ -127,6 +128,7 @@ export default function LoginPage() {
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     className="pl-10 pr-10 h-11 border-2 focus:border-blue-500 transition-colors"
+                    autoComplete="current-password"
                     required
                   />
                   <button

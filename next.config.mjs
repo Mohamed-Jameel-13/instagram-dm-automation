@@ -27,6 +27,23 @@ const nextConfig = {
     parallelServerBuildTraces: false, // Disable to fix Firebase issues
     parallelServerCompiles: false, // Disable to fix Firebase issues
   },
+  async headers() {
+    return [
+      {
+        source: '/(.*)',
+        headers: [
+          {
+            key: 'Cross-Origin-Opener-Policy',
+            value: 'same-origin-allow-popups',
+          },
+          {
+            key: 'Cross-Origin-Embedder-Policy',
+            value: 'unsafe-none',
+          },
+        ],
+      },
+    ];
+  },
   webpack: (config, { isServer }) => {
     // Fix Firebase module resolution issues
     if (!isServer) {
@@ -35,6 +52,15 @@ const nextConfig = {
         fs: false,
         net: false,
         tls: false,
+      };
+    }
+
+    // Ensure proper variable names in production
+    if (!isServer) {
+      config.optimization = {
+        ...config.optimization,
+        minimize: true,
+        mangleExports: false,
       };
     }
 
