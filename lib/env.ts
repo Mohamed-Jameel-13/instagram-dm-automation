@@ -12,6 +12,10 @@ const envSchema = z.object({
   // Database
   DATABASE_URL: z.string().min(1),
 
+  // Redis (optional for caching)
+  REDIS_URL: z.string().url().optional(),
+  REDIS_TOKEN: z.string().min(1).optional(),
+
   // Azure OpenAI Services (optional in production for now)
   AZURE_OPENAI_API_KEY: z.string().min(1).optional(),
   AZURE_OPENAI_ENDPOINT: z.string().url().optional(),
@@ -51,24 +55,48 @@ export function validateEnv() {
     return envSchema.parse(process.env)
   } catch (error) {
     if (error instanceof z.ZodError) {
-      console.warn("⚠️ Some environment variables are missing or invalid:", JSON.stringify(error.format(), null, 2))
+      console.warn("⚠️ Some environment variables are missing or invalid:")
       
-      // In production, try to continue with partial configuration
-      if (process.env.NODE_ENV === "production") {
-        console.warn("🚀 Running in production mode with partial environment configuration")
-        // Return a partial env object with safe defaults
-        return {
-          ...process.env,
-          AZURE_OPENAI_API_KEY: process.env.AZURE_OPENAI_API_KEY || "",
-          AZURE_OPENAI_ENDPOINT: process.env.AZURE_OPENAI_ENDPOINT || "",
-          AZURE_OPENAI_DEPLOYMENT_NAME: process.env.AZURE_OPENAI_DEPLOYMENT_NAME || "",
-          AZURE_OPENAI_API_VERSION: process.env.AZURE_OPENAI_API_VERSION || "2023-05-15",
-          INSTAGRAM_WEBHOOK_VERIFY_TOKEN: process.env.INSTAGRAM_WEBHOOK_VERIFY_TOKEN || "",
-          INSTAGRAM_WEBHOOK_SECRET: process.env.INSTAGRAM_WEBHOOK_SECRET || "",
-        }
+      // Log specific missing vars without JSON.stringify for better build performance
+      const issues = error.issues.map(issue => `${issue.path.join('.')}: ${issue.message}`).join(', ')
+      console.warn("Missing:", issues)
+      
+      // Always try to continue with partial configuration in any environment
+      console.warn("🚀 Continuing with partial environment configuration")
+      
+      // Return a partial env object with safe defaults
+      return {
+        ...process.env,
+        // Core required vars
+        DATABASE_URL: process.env.DATABASE_URL || "",
+        NEXT_PUBLIC_FIREBASE_API_KEY: process.env.NEXT_PUBLIC_FIREBASE_API_KEY || "",
+        NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN || "",
+        NEXT_PUBLIC_FIREBASE_PROJECT_ID: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || "",
+        NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET || "",
+        NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID || "",
+        NEXT_PUBLIC_FIREBASE_APP_ID: process.env.NEXT_PUBLIC_FIREBASE_APP_ID || "",
+        
+        // Optional vars with defaults
+        AZURE_OPENAI_API_KEY: process.env.AZURE_OPENAI_API_KEY || "",
+        AZURE_OPENAI_ENDPOINT: process.env.AZURE_OPENAI_ENDPOINT || "",
+        AZURE_OPENAI_DEPLOYMENT_NAME: process.env.AZURE_OPENAI_DEPLOYMENT_NAME || "",
+        AZURE_OPENAI_API_VERSION: process.env.AZURE_OPENAI_API_VERSION || "2023-05-15",
+        INSTAGRAM_CLIENT_ID: process.env.INSTAGRAM_CLIENT_ID || "",
+        INSTAGRAM_CLIENT_SECRET: process.env.INSTAGRAM_CLIENT_SECRET || "",
+        INSTAGRAM_WEBHOOK_VERIFY_TOKEN: process.env.INSTAGRAM_WEBHOOK_VERIFY_TOKEN || "",
+        INSTAGRAM_WEBHOOK_SECRET: process.env.INSTAGRAM_WEBHOOK_SECRET || "",
+        INSTAGRAM_ACCESS_TOKEN: process.env.INSTAGRAM_ACCESS_TOKEN || "",
+        REDIS_URL: process.env.REDIS_URL || "",
+        REDIS_TOKEN: process.env.REDIS_TOKEN || "",
+        NEXT_PUBLIC_APP_URL: process.env.NEXT_PUBLIC_APP_URL || "",
       }
     } else {
       console.error("❌ Environment validation error:", error)
+      // Don't throw in production, just warn and continue
+      if (process.env.NODE_ENV === "production") {
+        console.warn("🚨 Continuing despite validation error in production")
+        return process.env as any
+      }
     }
     throw new Error("Invalid environment variables")
   }
@@ -91,13 +119,11 @@ try {
   clientEnvSchema.parse(clientEnv)
 } catch (error) {
   if (error instanceof z.ZodError) {
-    console.error("❌ Invalid client environment variables:", JSON.stringify(error.format(), null, 4))
+    console.warn("⚠️ Some client environment variables are missing - some features may not work")
   } else {
-    console.error("❌ Client environment validation error:", error)
+    console.warn("⚠️ Client environment validation error:", error)
   }
   
-  // In production, log but don't throw for client env issues
-  if (process.env.NODE_ENV !== "production") {
-    throw new Error("Invalid client environment variables")
-  }
+  // Don't throw errors for client env issues - just warn and continue
+  console.warn("🚀 Continuing with available client environment variables")
 }

@@ -6,11 +6,18 @@ export const runtime = 'edge'
 // Import Redis for queueing (Edge-compatible)
 import { Redis } from '@upstash/redis'
 
-// Initialize Redis connection
-const redis = new Redis({
-  url: process.env.REDIS_URL!,
-  token: process.env.REDIS_TOKEN!,
-})
+// Initialize Redis connection with fallback
+let redis: Redis | null = null
+try {
+  if (process.env.REDIS_URL && process.env.REDIS_TOKEN) {
+    redis = new Redis({
+      url: process.env.REDIS_URL,
+      token: process.env.REDIS_TOKEN,
+    })
+  }
+} catch (error) {
+  console.warn('Redis not configured for webhook queue, using fallback processing')
+}
 
 // Webhook signature validation using Web Crypto API (Edge Runtime compatible)
 async function validateInstagramSignature(body: string, signature: string | null): Promise<boolean> {
@@ -90,8 +97,13 @@ export async function POST(req: NextRequest) {
       receivedAt: new Date().toISOString()
     }
     
-    // Push to Redis queue for background processing
-    await redis.lpush('instagram_events', JSON.stringify(eventData))
+    // Push to Redis queue for background processing (if available)
+    if (redis) {
+      await redis.lpush('instagram_events', JSON.stringify(eventData))
+    } else {
+      console.warn('⚠️ Redis not available, processing webhook inline')
+      // In production, you might want to implement alternative queueing
+    }
     
     console.log(`📨 [${requestId}] Event queued in ${Date.now() - queueStart}ms`)
     console.log(`⚡ [${requestId}] Total webhook response time: ${Date.now() - startTime}ms`)

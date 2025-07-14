@@ -3,26 +3,35 @@ import { followerTracker } from "@/lib/follower-tracker"
 import { ConversationManager } from "@/lib/conversation-manager"
 import { Redis } from '@upstash/redis'
 
-// Initialize Redis for caching
-const redis = new Redis({
-  url: process.env.REDIS_URL!,
-  token: process.env.REDIS_TOKEN!,
-})
+// Initialize Redis for caching with fallback
+let redis: Redis | null = null
+try {
+  if (process.env.REDIS_URL && process.env.REDIS_TOKEN) {
+    redis = new Redis({
+      url: process.env.REDIS_URL,
+      token: process.env.REDIS_TOKEN,
+    })
+  }
+} catch (error) {
+  console.warn('Redis not configured, falling back to database-only mode')
+}
 
 // Cache automation rules for 5 minutes to reduce DB hits
 export async function getAutomationRules(userId?: string, active = true) {
   const cacheKey = userId ? `automation_rules:${userId}` : 'automation_rules:all'
   
   try {
-    // Check cache first
-    const cached = await redis.get(cacheKey)
-    if (cached) {
-      console.log(`📦 Cache hit for automation rules: ${cacheKey}`)
-      return cached as any[]
+    // Check cache first (if Redis is available)
+    if (redis) {
+      const cached = await redis.get(cacheKey)
+      if (cached) {
+        console.log(`📦 Cache hit for automation rules: ${cacheKey}`)
+        return cached as any[]
+      }
     }
     
     // Fetch from database
-    console.log(`🔍 Cache miss, fetching from DB: ${cacheKey}`)
+    console.log(`🔍 ${redis ? 'Cache miss,' : 'No cache,'} fetching from DB: ${cacheKey}`)
     const rules = await prisma.automation.findMany({
       where: {
         ...(userId && { userId }),
@@ -33,8 +42,10 @@ export async function getAutomationRules(userId?: string, active = true) {
       },
     })
     
-    // Cache for 5 minutes
-    await redis.setex(cacheKey, 300, JSON.stringify(rules))
+    // Cache for 5 minutes (if Redis is available)
+    if (redis) {
+      await redis.setex(cacheKey, 300, JSON.stringify(rules))
+    }
     
     return rules
   } catch (error) {
