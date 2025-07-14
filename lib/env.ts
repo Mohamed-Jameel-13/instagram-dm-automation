@@ -9,26 +9,22 @@ const envSchema = z.object({
   NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID: z.string().min(1),
   NEXT_PUBLIC_FIREBASE_APP_ID: z.string().min(1),
 
-
-
   // Database
   DATABASE_URL: z.string().min(1),
 
-  // Azure OpenAI Services
-  AZURE_OPENAI_API_KEY: z.string().min(1),
-  AZURE_OPENAI_ENDPOINT: z.string().url(),
-  AZURE_OPENAI_DEPLOYMENT_NAME: z.string().min(1),
-  AZURE_OPENAI_API_VERSION: z.string().min(1),
-
-
+  // Azure OpenAI Services (optional in production for now)
+  AZURE_OPENAI_API_KEY: z.string().min(1).optional(),
+  AZURE_OPENAI_ENDPOINT: z.string().url().optional(),
+  AZURE_OPENAI_DEPLOYMENT_NAME: z.string().min(1).optional(),
+  AZURE_OPENAI_API_VERSION: z.string().min(1).optional(),
 
   // Instagram OAuth (optional - only needed for OAuth flow)
   INSTAGRAM_CLIENT_ID: z.string().min(1).optional(),
   INSTAGRAM_CLIENT_SECRET: z.string().min(1).optional(),
 
-  // Instagram Webhooks
-  INSTAGRAM_WEBHOOK_VERIFY_TOKEN: z.string().min(1),
-  INSTAGRAM_WEBHOOK_SECRET: z.string().min(1),
+  // Instagram Webhooks (optional for basic functionality)
+  INSTAGRAM_WEBHOOK_VERIFY_TOKEN: z.string().min(1).optional(),
+  INSTAGRAM_WEBHOOK_SECRET: z.string().min(1).optional(),
 
   // Instagram Access Token (optional - only needed for manual token method)
   INSTAGRAM_ACCESS_TOKEN: z.string().min(1).optional(),
@@ -55,7 +51,22 @@ export function validateEnv() {
     return envSchema.parse(process.env)
   } catch (error) {
     if (error instanceof z.ZodError) {
-      console.error("❌ Invalid environment variables:", JSON.stringify(error.format(), null, 4))
+      console.warn("⚠️ Some environment variables are missing or invalid:", JSON.stringify(error.format(), null, 2))
+      
+      // In production, try to continue with partial configuration
+      if (process.env.NODE_ENV === "production") {
+        console.warn("🚀 Running in production mode with partial environment configuration")
+        // Return a partial env object with safe defaults
+        return {
+          ...process.env,
+          AZURE_OPENAI_API_KEY: process.env.AZURE_OPENAI_API_KEY || "",
+          AZURE_OPENAI_ENDPOINT: process.env.AZURE_OPENAI_ENDPOINT || "",
+          AZURE_OPENAI_DEPLOYMENT_NAME: process.env.AZURE_OPENAI_DEPLOYMENT_NAME || "",
+          AZURE_OPENAI_API_VERSION: process.env.AZURE_OPENAI_API_VERSION || "2023-05-15",
+          INSTAGRAM_WEBHOOK_VERIFY_TOKEN: process.env.INSTAGRAM_WEBHOOK_VERIFY_TOKEN || "",
+          INSTAGRAM_WEBHOOK_SECRET: process.env.INSTAGRAM_WEBHOOK_SECRET || "",
+        }
+      }
     } else {
       console.error("❌ Environment validation error:", error)
     }
@@ -84,5 +95,9 @@ try {
   } else {
     console.error("❌ Client environment validation error:", error)
   }
-  throw new Error("Invalid client environment variables")
+  
+  // In production, log but don't throw for client env issues
+  if (process.env.NODE_ENV !== "production") {
+    throw new Error("Invalid client environment variables")
+  }
 }

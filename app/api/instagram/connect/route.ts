@@ -1,6 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/db"
-import { getEnv } from "@/lib/env-server"
 import { getUserIdFromRequest } from "@/lib/firebase-auth-server"
 import { ensureUserExists } from "@/lib/user-utils"
 
