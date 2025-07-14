@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { useSession, signIn } from "next-auth/react"
+import { useFirebaseAuth } from "@/components/firebase-auth"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -19,7 +19,7 @@ interface InstagramConnectionProps {
 }
 
 export function InstagramConnection({ onConnectionSuccess, compact = false }: InstagramConnectionProps) {
-  const { data: session, status } = useSession()
+  const { user, loading } = useFirebaseAuth()
   const [isConnecting, setIsConnecting] = useState(false)
   const [accessToken, setAccessToken] = useState("")
   const [connectedAccount, setConnectedAccount] = useState<InstagramAccount | null>(null)
@@ -118,7 +118,7 @@ export function InstagramConnection({ onConnectionSuccess, compact = false }: In
   }
 
   // Check if user is authenticated
-  if (status === "loading") {
+  if (loading) {
     return (
       <Card className="w-full max-w-md">
         <CardContent className="p-6">
@@ -128,7 +128,7 @@ export function InstagramConnection({ onConnectionSuccess, compact = false }: In
     )
   }
 
-  if (status === "unauthenticated") {
+  if (!loading && !user) {
     return (
       <Card className="w-full max-w-md">
         <CardHeader>

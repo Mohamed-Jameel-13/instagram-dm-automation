@@ -1,10 +1,10 @@
 "use client"
 
-import { useSession } from "next-auth/react"
+import { useFirebaseAuth } from "@/components/firebase-auth"
 import { useEffect, useState } from "react"
 
 export default function TestSessionPage() {
-  const { data: session, status } = useSession()
+  const { user, loading } = useFirebaseAuth()
   const [clientSession, setClientSession] = useState(null)
 
   useEffect(() => {
@@ -20,9 +20,9 @@ export default function TestSessionPage() {
       
       <div className="bg-gray-100 p-4 rounded mb-4">
         <h2 className="font-semibold">useSession Hook:</h2>
-        <p><strong>Status:</strong> {status}</p>
+        <p><strong>Status:</strong> {loading ? 'loading' : 'authenticated'}</p>
         <pre className="mt-2 text-sm overflow-auto">
-          {JSON.stringify(session, null, 2)}
+          {JSON.stringify(user, null, 2)}
         </pre>
       </div>
 

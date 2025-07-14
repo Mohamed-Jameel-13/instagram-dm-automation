@@ -2,7 +2,7 @@
 
 import type React from "react"
 import { useState, useEffect } from "react"
-import { useSession } from "next-auth/react"
+import { useFirebaseAuth } from "@/components/firebase-auth"
 
 import { AppSidebar } from "@/components/app-sidebar"
 import { SidebarProvider } from "@/components/ui/sidebar"
@@ -14,7 +14,7 @@ export default function DashboardLayout({
 }: {
   children: React.ReactNode
 }) {
-  const { data: session, status } = useSession()
+  const { user, loading } = useFirebaseAuth()
   const [showConnectionAlert, setShowConnectionAlert] = useState(true)
 
   // Dismiss the alert after it's acknowledged
@@ -33,7 +33,7 @@ export default function DashboardLayout({
         <AppSidebar />
         <div className="flex flex-1 flex-col">
           <Header />
-          {showConnectionAlert && status === "authenticated" && !session?.user?.accounts?.some(account => account.provider === "instagram") && (
+          {showConnectionAlert && !loading && user && (
             <div className="px-6 pt-6">
               <InstagramConnectionStatus onConnected={handleConnected} />
             </div>

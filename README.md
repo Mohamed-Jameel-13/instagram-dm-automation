@@ -14,9 +14,7 @@ INSTAGRAM_CLIENT_ID=your_instagram_client_id
 INSTAGRAM_CLIENT_SECRET=your_instagram_client_secret
 INSTAGRAM_REDIRECT_URI=http://localhost:3000/api/auth/callback/instagram
 
-# Authentication
-NEXTAUTH_URL=http://localhost:3000
-NEXTAUTH_SECRET=your_nextauth_secret_key
+# Authentication - Using Firebase Auth (Google Provider)
 
 # Database
 DATABASE_URL=your_database_connection_string

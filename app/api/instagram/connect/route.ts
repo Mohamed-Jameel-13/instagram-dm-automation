@@ -6,9 +6,9 @@ import { getEnv } from "@/lib/env-server"
 
 export async function POST(req: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
+    const userId = "firebase-user-id" // TODO: Implement Firebase Auth
     
-    if (!session?.user?.id) {
+    if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
@@ -45,7 +45,7 @@ export async function POST(req: NextRequest) {
         expires_at: null,
       },
       create: {
-        userId: session.user.id,
+        userId: userId,
         type: "oauth",
         provider: "instagram",
         providerAccountId: instagramId,

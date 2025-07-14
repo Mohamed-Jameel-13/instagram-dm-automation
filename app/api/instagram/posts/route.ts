@@ -5,9 +5,9 @@ import { getInstagramAPI } from "@/lib/instagram-api"
 
 export async function GET(req: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
+    const userId = "firebase-user-id" // TODO: Implement Firebase Auth
     
-    if (!session?.user?.id) {
+    if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
@@ -15,7 +15,7 @@ export async function GET(req: NextRequest) {
     const limit = parseInt(searchParams.get("limit") || "12")
 
     // Get Instagram API instance for the user
-    const instagramAPI = await getInstagramAPI(session.user.id)
+    const instagramAPI = await getInstagramAPI(userId)
     
     if (!instagramAPI) {
       return NextResponse.json({ 

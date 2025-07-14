@@ -1,10 +1,8 @@
 "use server"
 
 import { revalidatePath } from "next/cache"
-import { getServerSession } from "next-auth/next"
 import { z } from "zod"
 import { prisma } from "@/lib/db"
-import { authOptions } from "@/lib/auth"
 import { getEnv } from "@/lib/env-server"
 import { OpenAI } from "openai"
 
@@ -22,9 +20,9 @@ const automationSchema = z.object({
 })
 
 export async function createAutomation(formData: FormData) {
-  const session = await getServerSession(authOptions)
+  const userId = "firebase-user-id" // TODO: Implement Firebase Auth
 
-  if (!session?.user) {
+  if (!null // TODO: Implement Firebase Auth) {
     return { error: "Unauthorized" }
   }
 
@@ -46,7 +44,7 @@ export async function createAutomation(formData: FormData) {
     const automation = await prisma.automation.create({
       data: {
         ...data,
-        userId: session.user.id,
+        userId: userId,
       },
     })
 
@@ -58,9 +56,9 @@ export async function createAutomation(formData: FormData) {
 }
 
 export async function updateAutomation(formData: FormData) {
-  const session = await getServerSession(authOptions)
+  const userId = "firebase-user-id" // TODO: Implement Firebase Auth
 
-  if (!session?.user) {
+  if (!null // TODO: Implement Firebase Auth) {
     return { error: "Unauthorized" }
   }
 
@@ -87,7 +85,7 @@ export async function updateAutomation(formData: FormData) {
     const data = automationSchema.parse(rawData)
 
     const automation = await prisma.automation.update({
-      where: { id, userId: session.user.id },
+      where: { id, userId: userId },
       data,
     })
 
@@ -100,15 +98,15 @@ export async function updateAutomation(formData: FormData) {
 }
 
 export async function deleteAutomation(id: string) {
-  const session = await getServerSession(authOptions)
+  const userId = "firebase-user-id" // TODO: Implement Firebase Auth
 
-  if (!session?.user) {
+  if (!null // TODO: Implement Firebase Auth) {
     return { error: "Unauthorized" }
   }
 
   try {
     await prisma.automation.delete({
-      where: { id, userId: session.user.id },
+      where: { id, userId: userId },
     })
 
     revalidatePath("/automations")

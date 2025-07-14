@@ -4,7 +4,7 @@ import { useState, useEffect } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { Plus, Zap } from "lucide-react"
-import { useSession } from "next-auth/react"
+import { useFirebaseAuth } from "@/components/firebase-auth"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -36,7 +36,7 @@ const initialAutomations: Automation[] = []
 
 export default function AutomationsPage() {
   const router = useRouter()
-  const { data: session, status } = useSession()
+  const { user, loading } = useFirebaseAuth()
   const [automations, setAutomations] = useState<Automation[]>([])
   const [isInstagramConnected, setIsInstagramConnected] = useState(false)
   const [connectedAccount, setConnectedAccount] = useState<InstagramAccount | null>(null)
@@ -45,7 +45,7 @@ export default function AutomationsPage() {
   // Fetch user's automations
   useEffect(() => {
     const fetchAutomations = async () => {
-      if (session?.user?.id) {
+      if (user?.uid) {
         try {
           const response = await fetch("/api/automations")
           if (response.ok) {
@@ -58,7 +58,7 @@ export default function AutomationsPage() {
       }
     }
 
-    if (status !== "loading" && session?.user?.id) {
+    if (!loading && user?.uid) {
       fetchAutomations()
     }
   }, [session, status])
@@ -66,7 +66,7 @@ export default function AutomationsPage() {
   // Check Instagram connection status
   useEffect(() => {
     const checkInstagramConnection = async () => {
-      if (session?.user?.id) {
+      if (user?.uid) {
         try {
           setIsLoading(true)
           const response = await fetch("/api/instagram/status")
@@ -88,7 +88,7 @@ export default function AutomationsPage() {
       }
     }
 
-    if (status !== "loading") {
+    if (!loading) {
       checkInstagramConnection()
     }
   }, [session, status])

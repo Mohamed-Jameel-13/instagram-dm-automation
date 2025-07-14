@@ -1,15 +1,9 @@
-import { DefaultSession } from "next-auth"
-
-declare module "next-auth" {
-  interface Session {
-    user: {
-      id: string
-      accounts?: {
-        provider: string
-        id: string
-      }[]
-    } & DefaultSession["user"]
-  }
+// Firebase Auth types
+export interface FirebaseUser {
+  id: string
+  email: string
+  name?: string | null
+  image?: string | null
 }
 
 export interface InstagramAccount {

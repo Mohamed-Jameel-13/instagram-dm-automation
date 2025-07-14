@@ -1,6 +1,6 @@
 "use client"
 
-import { useSession } from "next-auth/react"
+import { useFirebaseAuth } from "@/components/firebase-auth"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
 import { Instagram } from "lucide-react"
@@ -24,7 +24,7 @@ export function InstagramConnectionStatus({
   className?: string;
   onConnected?: () => void;
 }) {
-  const { data: session, status } = useSession()
+  const { user, loading } = useFirebaseAuth()
   const [isConnecting, setIsConnecting] = useState(false)
   const [connectionError, setConnectionError] = useState("")
   const [connectedAccount, setConnectedAccount] = useState<InstagramAccount | null>(null)
@@ -32,7 +32,7 @@ export function InstagramConnectionStatus({
   // Check for existing Instagram connection on component mount
   useEffect(() => {
     const checkInstagramConnection = async () => {
-      if (session?.user?.id) {
+      if (user?.uid) {
         try {
           const response = await fetch("/api/instagram/status")
           if (response.ok) {

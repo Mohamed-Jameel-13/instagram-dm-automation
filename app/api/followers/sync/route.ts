@@ -1,20 +1,18 @@
 import { NextRequest, NextResponse } from "next/server"
-import { getServerSession } from "next-auth"
-import { authOptions } from "@/lib/auth"
 import { followerTracker } from "@/lib/follower-tracker"
 
 export async function POST(req: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
+    const userId = "firebase-user-id" // TODO: Implement Firebase Auth
     
-    if (!session?.user?.id) {
+    if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    console.log(`Syncing followers for user: ${session.user.id}`)
+    console.log(`Syncing followers for user: ${userId}`)
     
     // Sync followers and detect new ones
-    const result = await followerTracker.syncFollowers(session.user.id)
+    const result = await followerTracker.syncFollowers(userId)
     
     console.log(`Sync completed - Total: ${result.totalFollowers}, New: ${result.newFollowers.length}`)
     
@@ -40,14 +38,14 @@ export async function POST(req: NextRequest) {
 
 export async function GET(req: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
+    const userId = "firebase-user-id" // TODO: Implement Firebase Auth
     
-    if (!session?.user?.id) {
+    if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
     // Get follower statistics
-    const stats = await followerTracker.getFollowerStats(session.user.id)
+    const stats = await followerTracker.getFollowerStats(userId)
     
     return NextResponse.json({ 
       success: true, 

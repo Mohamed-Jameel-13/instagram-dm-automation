@@ -5,16 +5,16 @@ import { prisma } from "@/lib/db"
 
 export async function GET(req: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
+    const userId = "firebase-user-id" // TODO: Implement Firebase Auth
     
-    if (!session?.user?.id) {
+    if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
     // Get all automations for the user
     const automations = await prisma.automation.findMany({
       where: {
-        userId: session.user.id,
+        userId: userId,
       },
       include: {
         user: true,
@@ -24,7 +24,7 @@ export async function GET(req: NextRequest) {
     // Get user's Instagram account info
     const instagramAccount = await prisma.account.findFirst({
       where: {
-        userId: session.user.id,
+        userId: userId,
         provider: "instagram",
       },
     })
@@ -32,7 +32,7 @@ export async function GET(req: NextRequest) {
     // Transform automations to show parsed data
     const debugInfo = {
       user: {
-        id: session.user.id,
+        id: userId,
         email: session.user.email,
       },
       instagramAccount: instagramAccount ? {

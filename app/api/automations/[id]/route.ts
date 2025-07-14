@@ -1,21 +1,17 @@
 import { NextRequest, NextResponse } from "next/server"
-import { getServerSession } from "next-auth"
-import { authOptions } from "@/lib/auth"
+// TODO: Implement Firebase Auth
 import { prisma } from "@/lib/db"
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const session = await getServerSession(authOptions)
-    
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    }
+    // TODO: Implement Firebase Auth check
+    const userId = "firebase-user-id" // Temporary placeholder
 
     const { id } = await params
     const automation = await prisma.automation.findFirst({
       where: {
         id: id,
-        userId: session.user.id,
+        userId: userId,
       },
     })
 
@@ -51,9 +47,9 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const session = await getServerSession(authOptions)
+    const userId = "firebase-user-id" // TODO: Implement Firebase Auth
     
-    if (!session?.user?.id) {
+    if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
@@ -76,7 +72,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     const automation = await prisma.automation.update({
       where: { 
         id: id,
-        userId: session.user.id,
+        userId: userId,
       },
       data: updateData,
     })
@@ -104,9 +100,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const session = await getServerSession(authOptions)
+    const userId = "firebase-user-id" // TODO: Implement Firebase Auth
     
-    if (!session?.user?.id) {
+    if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
@@ -114,7 +110,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     await prisma.automation.delete({
       where: { 
         id: id,
-        userId: session.user.id,
+        userId: userId,
       },
     })
 
