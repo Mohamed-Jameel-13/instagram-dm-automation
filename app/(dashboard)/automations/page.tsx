@@ -61,7 +61,7 @@ export default function AutomationsPage() {
     if (!loading && user?.uid) {
       fetchAutomations()
     }
-  }, [session, status])
+  }, [user, loading])
 
   // Check Instagram connection status
   useEffect(() => {
@@ -91,7 +91,7 @@ export default function AutomationsPage() {
     if (!loading) {
       checkInstagramConnection()
     }
-  }, [session, status])
+  }, [user, loading])
 
   const handleCreateAutomation = async () => {
     if (!isInstagramConnected) {

@@ -33,7 +33,7 @@ export async function GET(req: NextRequest) {
     const debugInfo = {
       user: {
         id: userId,
-        email: session.user.email,
+        email: "firebase-user@example.com", // TODO: Get from Firebase Auth
       },
       instagramAccount: instagramAccount ? {
         id: instagramAccount.id,
