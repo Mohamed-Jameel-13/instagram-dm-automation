@@ -55,6 +55,12 @@ const nextConfig = {
       };
     }
 
+    // Add alias resolution for @/* paths
+    config.resolve.alias = {
+      ...config.resolve.alias,
+      '@': require('path').resolve(__dirname),
+    };
+
     // Ensure proper variable names in production
     if (!isServer) {
       config.optimization = {
