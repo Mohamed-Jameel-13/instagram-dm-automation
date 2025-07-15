@@ -70,6 +70,39 @@ export async function POST(req: NextRequest) {
     }
 
     console.log("🔄 Saving Instagram account connection...")
+    
+    // Detect token type and permissions
+    let detectedScope = "user_profile,user_media"
+    try {
+      // Test if this is a Business API token by checking business-specific endpoint
+      const businessTestResponse = await fetch(
+        `https://graph.instagram.com/v18.0/${instagramId}?fields=id,username,account_type&access_token=${accessToken}`
+      )
+      
+      if (businessTestResponse.ok) {
+        const data = await businessTestResponse.json()
+        if (data.account_type === "BUSINESS") {
+          console.log("✅ Detected Business API token - setting full permissions scope")
+          detectedScope = "instagram_manage_messages,instagram_manage_comments,user_profile,user_media"
+        }
+      }
+      
+      // Additional test: Try to access conversations endpoint (requires messaging permission)
+      const conversationTestResponse = await fetch(
+        `https://graph.instagram.com/v18.0/${instagramId}/conversations?access_token=${accessToken}`
+      )
+      
+      if (conversationTestResponse.ok) {
+        console.log("✅ Token has messaging permissions - updating scope")
+        detectedScope = "instagram_manage_messages,instagram_manage_comments,user_profile,user_media"
+      }
+      
+    } catch (error) {
+      console.log("⚠️ Could not detect token permissions, using basic scope")
+    }
+    
+    console.log("🔍 Detected scope:", detectedScope)
+    
     // Save or update the Instagram account connection
     try {
       const account = await prisma.account.upsert({
@@ -83,6 +116,7 @@ export async function POST(req: NextRequest) {
           access_token: accessToken,
           refresh_token: null,
           expires_at: null,
+          scope: detectedScope,
         },
         create: {
           userId: userId,
@@ -91,7 +125,7 @@ export async function POST(req: NextRequest) {
           providerAccountId: instagramId,
           access_token: accessToken,
           token_type: "bearer",
-          scope: "user_profile,user_media",
+          scope: detectedScope,
         },
       })
       

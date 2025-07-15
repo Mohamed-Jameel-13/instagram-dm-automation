@@ -78,8 +78,8 @@ export function InstagramConnection({ onConnectionSuccess, compact = false }: In
     // Check token format
     if (!cleanToken.startsWith('IG') && !cleanToken.startsWith('EAAC') && !cleanToken.startsWith('IGQVJ')) {
       toast({
-        title: "Incorrect Token Type",
-        description: "Please use Instagram Basic Display API tokens (usually start with 'IGQVJ' or 'IG').",
+        title: "Incorrect Token Type", 
+        description: "Please use Instagram API tokens (Business API tokens start with 'EAAC', Basic Display API tokens start with 'IGQVJ' or 'IG').",
         variant: "destructive",
       })
       return
@@ -87,11 +87,36 @@ export function InstagramConnection({ onConnectionSuccess, compact = false }: In
 
     setIsConnecting(true)
     try {
-      // Test the access token using Basic Display API
+      // Test the access token - try Business API first, then Basic Display API
       console.log('Testing access token...')
-      const response = await fetch(`https://graph.instagram.com/me?fields=id,username&access_token=${cleanToken}`)
       
-      if (!response.ok) {
+      let response;
+      let accountData;
+      let tokenType = "unknown";
+      
+      // First try Business API endpoint
+      try {
+        response = await fetch(`https://graph.instagram.com/me?fields=id,username,account_type&access_token=${cleanToken}`)
+        if (response.ok) {
+          accountData = await response.json()
+          tokenType = "business"
+          console.log('✅ Business API token detected:', accountData)
+        }
+      } catch (error) {
+        console.log('Business API test failed, trying Basic Display API...')
+      }
+      
+      // If Business API failed, try Basic Display API
+      if (!response || !response.ok) {
+        response = await fetch(`https://graph.instagram.com/me?fields=id,username&access_token=${cleanToken}`)
+        if (response.ok) {
+          accountData = await response.json()
+          tokenType = "basic_display"
+          console.log('✅ Basic Display API token detected:', accountData)
+        }
+      }
+      
+      if (!response || !response.ok) {
         // Get more detailed error information
         const errorData = await response.text()
         console.error('Instagram API error:', errorData)
@@ -109,8 +134,7 @@ export function InstagramConnection({ onConnectionSuccess, compact = false }: In
         throw new Error(`Invalid access token (Status: ${response.status}). Please check your token and try again.`)
       }
 
-      const accountData = await response.json()
-      console.log('Instagram account data:', accountData)
+      console.log(`Instagram account data (${tokenType}):`, accountData)
 
       // Save the connection to your database
       const saveResponse = await fetch("/api/instagram/connect", {
@@ -118,13 +142,13 @@ export function InstagramConnection({ onConnectionSuccess, compact = false }: In
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({
-          accessToken: cleanToken,
-          instagramId: accountData.id,
-          username: accountData.username,
-          accountType: "personal", // Basic Display API doesn't have account_type
-          userId: user?.uid, // Send the Firebase Auth user ID
-        }),
+                  body: JSON.stringify({
+            accessToken: cleanToken,
+            instagramId: accountData.id,
+            username: accountData.username,
+            accountType: accountData.account_type || "personal",
+            userId: user?.uid, // Send the Firebase Auth user ID
+          }),
       })
 
       if (!saveResponse.ok) {
@@ -274,8 +298,8 @@ export function InstagramConnection({ onConnectionSuccess, compact = false }: In
               onChange={(e) => setAccessToken(e.target.value)}
             />
             <div className="text-xs text-gray-500 space-y-1">
-              <p>Paste your Instagram Basic Display API access token here</p>
-              <p><strong>Valid token example:</strong> IGQVJ... (200+ characters)</p>
+              <p><strong>For DM automation:</strong> Use Instagram Business API token (starts with EAAC...)</p>
+              <p><strong>For basic features:</strong> Instagram Basic Display API token (starts with IGQVJ...)</p>
               <p><strong>⚠️ Don't paste error messages</strong> - only the actual token!</p>
             </div>
           </div>
@@ -298,20 +322,21 @@ export function InstagramConnection({ onConnectionSuccess, compact = false }: In
         </CardHeader>
         <CardContent className="space-y-3 text-sm">
           <div>
-            <p className="font-medium">📱 Instagram Token Requirements</p>
+            <p className="font-medium">📱 Instagram Token Requirements for DM Automation</p>
             <ul className="text-gray-600 space-y-1 mt-2">
-              <li>• Use <strong>Instagram Basic Display API</strong> tokens</li>
-              <li>• Personal Instagram accounts work best</li>
-              <li>• Token should be long-lived (60 days)</li>
-              <li>• Token format: IGQVJ... (very long string)</li>
+              <li>• Use <strong>Instagram Business API</strong> tokens (EAAC...)</li>
+              <li>• Must have <strong>instagram_manage_messages</strong> permission</li>
+              <li>• Must have <strong>instagram_manage_comments</strong> permission</li>
+              <li>• Instagram account must be converted to Business</li>
             </ul>
           </div>
           <div>
             <p className="font-medium">🔧 Common Issues</p>
             <ul className="text-gray-600 space-y-1 mt-2">
-              <li>• Expired tokens (regenerate from Instagram)</li>
-              <li>• Business account tokens (try personal account)</li>
-              <li>• Short-lived tokens (exchange for long-lived)</li>
+              <li>• Wrong token type (use Business API, not Basic Display)</li>
+              <li>• Missing messaging permissions in Facebook App</li>
+              <li>• Expired tokens (regenerate from Facebook Developer)</li>
+              <li>• Instagram account not set to Business</li>
             </ul>
           </div>
           <div className="text-xs text-gray-500 mt-4 space-y-1">
