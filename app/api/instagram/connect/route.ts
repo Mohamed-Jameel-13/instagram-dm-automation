@@ -124,3 +124,50 @@ export async function POST(req: NextRequest) {
     }, { status: 500 })
   }
 }
+
+export async function DELETE(req: NextRequest) {
+  try {
+    // Get user ID from request
+    let userId = await getUserIdFromRequest(req)
+    
+    // Also check query parameters for user ID (from client)
+    if (!userId) {
+      const url = new URL(req.url)
+      userId = url.searchParams.get('userId')
+    }
+    
+    if (!userId) {
+      console.error("❌ No userId found in disconnect request")
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    }
+
+    console.log("🔗 Instagram disconnect request for user:", userId)
+
+    // Find and delete the Instagram account connection
+    const deletedAccount = await prisma.account.deleteMany({
+      where: {
+        userId: userId,
+        provider: "instagram",
+      },
+    })
+
+    if (deletedAccount.count === 0) {
+      console.log("❌ No Instagram account found to disconnect for user:", userId)
+      return NextResponse.json({ error: "No Instagram account found" }, { status: 404 })
+    }
+
+    console.log("✅ Instagram account disconnected successfully for user:", userId)
+
+    return NextResponse.json({
+      success: true,
+      message: "Instagram account disconnected successfully",
+    })
+
+  } catch (error) {
+    console.error("💥 Instagram disconnect error:", error)
+    return NextResponse.json({ 
+      error: "Internal server error", 
+      details: error instanceof Error ? error.message : String(error)
+    }, { status: 500 })
+  }
+}

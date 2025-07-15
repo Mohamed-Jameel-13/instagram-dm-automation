@@ -3,11 +3,12 @@
 import { useFirebaseAuth } from "@/components/firebase-auth"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
-import { Instagram } from "lucide-react"
+import { Instagram, Unlink2 } from "lucide-react"
 import { useState, useEffect, useCallback } from "react"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { ReloadIcon, CheckCircledIcon } from "@radix-ui/react-icons"
 import { InstagramConnection } from "@/components/instagram-connection"
+import { useToast } from "@/hooks/use-toast"
 
 interface InstagramAccount {
   id: string
@@ -25,7 +26,9 @@ export function InstagramConnectionStatus({
   onConnected?: () => void;
 }) {
   const { user, loading } = useFirebaseAuth()
+  const { toast } = useToast()
   const [isConnecting, setIsConnecting] = useState(false)
+  const [isDisconnecting, setIsDisconnecting] = useState(false)
   const [connectionError, setConnectionError] = useState("")
   const [connectedAccount, setConnectedAccount] = useState<InstagramAccount | null>(null)
   const [isChecking, setIsChecking] = useState(false)
@@ -78,6 +81,50 @@ export function InstagramConnectionStatus({
     onConnected()
   }
 
+  const handleDisconnect = async () => {
+    if (!user?.uid) {
+      toast({
+        title: "Error",
+        description: "User not authenticated",
+        variant: "destructive",
+      })
+      return
+    }
+
+    setIsDisconnecting(true)
+    try {
+      console.log('🔗 Disconnecting Instagram account for user:', user.uid)
+      const response = await fetch(`/api/instagram/connect?userId=${user.uid}`, {
+        method: "DELETE",
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || "Failed to disconnect Instagram account")
+      }
+
+      // Update component state
+      setConnectedAccount(null)
+      setConnectionError("")
+
+      toast({
+        title: "Success",
+        description: "Instagram account disconnected successfully",
+      })
+
+      console.log('✅ Instagram account disconnected successfully')
+    } catch (error) {
+      console.error("Error disconnecting Instagram account:", error)
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to disconnect Instagram account",
+        variant: "destructive",
+      })
+    } finally {
+      setIsDisconnecting(false)
+    }
+  }
+
   if (showCard) {
     return (
       <Card className={className}>
@@ -116,6 +163,25 @@ export function InstagramConnectionStatus({
                 <p>✅ Comment automation ready</p>
                 <p>✅ Webhook configured</p>
               </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleDisconnect}
+                disabled={isDisconnecting}
+                className="w-full sm:w-auto"
+              >
+                {isDisconnecting ? (
+                  <>
+                    <ReloadIcon className="mr-2 h-4 w-4 animate-spin" />
+                    Disconnecting...
+                  </>
+                ) : (
+                  <>
+                    <Unlink2 className="mr-2 h-4 w-4" />
+                    Disconnect Account
+                  </>
+                )}
+              </Button>
             </div>
           ) : (
             <div className="space-y-4">
@@ -164,5 +230,43 @@ export function InstagramConnectionStatus({
     )
   }
 
-  return null
+  // Show connected status for non-card version
+  return (
+    <Alert className={className}>
+      <Instagram className="h-4 w-4" />
+      <AlertTitle>Instagram Connected</AlertTitle>
+      <AlertDescription>
+        <div className="flex flex-col space-y-3">
+          <div className="flex items-center space-x-3">
+            <div className="w-8 h-8 bg-gradient-to-r from-purple-500 to-pink-500 rounded-full flex items-center justify-center text-white font-bold text-sm">
+              {connectedAccount.username[0].toUpperCase()}
+            </div>
+            <div>
+              <p className="font-medium">@{connectedAccount.username}</p>
+              <p className="text-sm text-muted-foreground">{connectedAccount.account_type || "Business"} Account</p>
+            </div>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleDisconnect}
+            disabled={isDisconnecting}
+            className="w-full sm:w-auto"
+          >
+            {isDisconnecting ? (
+              <>
+                <ReloadIcon className="mr-2 h-4 w-4 animate-spin" />
+                Disconnecting...
+              </>
+            ) : (
+              <>
+                <Unlink2 className="mr-2 h-4 w-4" />
+                Disconnect Account
+              </>
+            )}
+          </Button>
+        </div>
+      </AlertDescription>
+    </Alert>
+  )
 } 
