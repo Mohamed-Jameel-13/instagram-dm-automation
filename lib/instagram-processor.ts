@@ -595,6 +595,7 @@ async function replyToCommentWithRetry(account: any, commentId: string, message:
   
   while (attempts < maxRetries) {
     try {
+      // Use correct Instagram Business API endpoint for comment replies
       const response = await fetch(`https://graph.instagram.com/v18.0/${commentId}/replies`, {
         method: 'POST',
         headers: {
@@ -647,6 +648,41 @@ async function sendPrivateReplyToComment(commentId: string, automation: any, com
     
     if (!account?.access_token) {
       throw new Error("No Instagram access token found")
+    }
+
+    // Get response message for private DM
+    let responseMessage = ""
+    if (automation.actionType === "ai" && automation.aiPrompt) {
+      responseMessage = await generateAIResponse(automation.aiPrompt, automation.message || "Thanks for your comment!")
+    } else if (automation.message) {
+      responseMessage = automation.message
+    } else {
+      throw new Error("No DM message configured")
+    }
+
+    // Send private reply using correct endpoint for Instagram Business API
+    const dmResponse = await fetch(`https://graph.instagram.com/v18.0/${account.providerAccountId}/messages`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${account.access_token}`,
+      },
+      body: JSON.stringify({
+        recipient: { 
+          comment_id: commentId 
+        },
+        message: { 
+          text: responseMessage 
+        }
+      }),
+    })
+
+    if (dmResponse.ok) {
+      console.log(`✅ [${requestId}] Private reply sent successfully`)
+    } else {
+      const errorText = await dmResponse.text()
+      console.error(`❌ [${requestId}] Private reply failed:`, errorText)
+      throw new Error(`Private reply failed: ${errorText}`)
     }
     
     // Get private message
