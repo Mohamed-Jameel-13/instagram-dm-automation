@@ -1,4 +1,6 @@
 import { prisma } from "@/lib/db"
+
+// Ensure we're using Node.js runtime for database operations
 import { followerTracker } from "@/lib/follower-tracker"
 import { ConversationManager } from "@/lib/conversation-manager"
 import { Redis } from '@upstash/redis'

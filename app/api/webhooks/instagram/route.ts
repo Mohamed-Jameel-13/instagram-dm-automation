@@ -1,7 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server"
 
-// Use Edge Runtime for ultra-fast response
-export const runtime = 'edge'
+// Force Node.js runtime for Prisma compatibility (fixes database issues)
+export const runtime = 'nodejs'
 
 // Import Redis for queueing (Edge-compatible)
 import { Redis } from '@upstash/redis'
