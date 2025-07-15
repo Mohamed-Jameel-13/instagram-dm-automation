@@ -3,10 +3,12 @@ import { followerTracker } from "@/lib/follower-tracker"
 import { ConversationManager } from "@/lib/conversation-manager"
 import { Redis } from '@upstash/redis'
 
-// Initialize Redis for caching with fallback
+// Temporarily disable Redis caching to avoid compatibility issues
 let redis: Redis | null = null
 try {
-  if (process.env.REDIS_URL && process.env.REDIS_TOKEN) {
+  // TEMPORARILY DISABLED: Redis has compatibility issues
+  // Re-enable after fixing Redis client compatibility  
+  if (false && process.env.REDIS_URL && process.env.REDIS_TOKEN) {
     redis = new Redis({
       url: process.env.REDIS_URL,
       token: process.env.REDIS_TOKEN,
@@ -74,12 +76,15 @@ export async function processInstagramEvent(eventData: any) {
       for (const entry of body.entry) {
         console.log(`📝 [${requestId}] Processing entry:`, JSON.stringify(entry, null, 2))
         
+        const instagramAccountId = entry.id // This is the Instagram account that received the event
+        console.log(`📝 [${requestId}] Instagram account ID from webhook: ${instagramAccountId}`)
+        
         // Handle Direct Messages
         if (entry.messaging) {
           console.log(`💬 [${requestId}] Found ${entry.messaging.length} messaging events`)
           
           for (const event of entry.messaging) {
-            await handleInstagramMessage(event, requestId)
+            await handleInstagramMessage(event, requestId, instagramAccountId)
           }
         }
         
@@ -89,7 +94,7 @@ export async function processInstagramEvent(eventData: any) {
           
           for (const change of entry.changes) {
             if (change.field === "comments") {
-              await handleInstagramComment(change.value, requestId)
+              await handleInstagramComment(change.value, requestId, instagramAccountId)
             }
           }
         }
@@ -105,7 +110,7 @@ export async function processInstagramEvent(eventData: any) {
   }
 }
 
-async function handleInstagramMessage(event: any, requestId: string) {
+async function handleInstagramMessage(event: any, requestId: string, instagramAccountId: string) {
   console.log(`📨 [${requestId}] Processing Instagram DM:`, event)
   
   // Only process incoming messages (not sent by our bot)
@@ -125,28 +130,58 @@ async function handleInstagramMessage(event: any, requestId: string) {
       let activeConversationFound = false
       
       for (const automation of dmAutomations) {
-        if (automation.actionType !== "ai") continue
+        // Get user's Instagram account
+        const userInstagramAccount = await prisma.account.findFirst({
+          where: {
+            userId: automation.userId,
+            provider: "instagram",
+          },
+        })
         
-        const conversationStatus = await ConversationManager.isInActiveConversation(
-          automation.userId,
-          senderId
-        )
+        if (!userInstagramAccount) {
+          console.log(`❌ [${requestId}] No Instagram account found for automation user ${automation.userId}`)
+          continue
+        }
         
-        if (conversationStatus.isActive && conversationStatus.automationId === automation.id) {
-          console.log(`💬 [${requestId}] User ${senderId} in active AI conversation`)
-          activeConversationFound = true
-          
-          await ConversationManager.addMessageToConversation(
+        // CRITICAL FIX: Check if this Instagram account is the one receiving the webhook event
+        if (userInstagramAccount.providerAccountId !== instagramAccountId) {
+          console.log(`❌ [${requestId}] Instagram account mismatch: automation owner has ${userInstagramAccount.providerAccountId}, webhook is for ${instagramAccountId}`)
+          continue
+        }
+        
+        console.log(`✅ [${requestId}] Instagram account match confirmed: ${userInstagramAccount.providerAccountId}`)
+        
+        // Check if business account
+        const isBusinessAccount = userInstagramAccount.scope?.includes("instagram_manage_messages") || 
+                                  userInstagramAccount.scope?.includes("instagram_manage_comments")
+        
+        if (!isBusinessAccount) {
+          console.log(`❌ [${requestId}] Instagram account ${userInstagramAccount.providerAccountId} doesn't have business permissions`)
+          continue
+        }
+        
+        if (automation.actionType === "ai") {
+          const conversationStatus = await ConversationManager.isInActiveConversation(
             automation.userId,
-            senderId,
-            automation.id,
-            "user",
-            messageText
+            senderId
           )
           
-          await sendInstagramAIMessage(senderId, automation, recipientId, messageText, requestId)
-          await logAutomationTrigger(automation.id, "dm_conversation", messageText, senderId)
-          break
+          if (conversationStatus.isActive && conversationStatus.automationId === automation.id) {
+            console.log(`💬 [${requestId}] User ${senderId} in active AI conversation`)
+            activeConversationFound = true
+            
+            await ConversationManager.addMessageToConversation(
+              automation.userId,
+              senderId,
+              automation.id,
+              "user",
+              messageText
+            )
+            
+            await sendInstagramAIMessage(senderId, automation, recipientId, messageText, requestId)
+            await logAutomationTrigger(automation.id, "dm_conversation", messageText, senderId)
+            break
+          }
         }
       }
       
@@ -161,22 +196,38 @@ async function handleInstagramMessage(event: any, requestId: string) {
             },
           })
           
-          if (!userInstagramAccount) continue
+          if (!userInstagramAccount) {
+            console.log(`❌ [${requestId}] No Instagram account found for automation user ${automation.userId}`)
+            continue
+          }
+          
+          // CRITICAL FIX: Check if this Instagram account is the one receiving the webhook event
+          if (userInstagramAccount.providerAccountId !== instagramAccountId) {
+            console.log(`❌ [${requestId}] Instagram account mismatch: automation owner has ${userInstagramAccount.providerAccountId}, webhook is for ${instagramAccountId}`)
+            continue
+          }
+          
+          console.log(`✅ [${requestId}] Instagram account match confirmed: ${userInstagramAccount.providerAccountId}`)
           
           // Check if business account
           const isBusinessAccount = userInstagramAccount.scope?.includes("instagram_manage_messages") || 
                                     userInstagramAccount.scope?.includes("instagram_manage_comments")
           
-          if (!isBusinessAccount) continue
+          if (!isBusinessAccount) {
+            console.log(`❌ [${requestId}] Instagram account ${userInstagramAccount.providerAccountId} doesn't have business permissions`)
+            continue
+          }
           
           // Check keywords
           const keywords = JSON.parse(automation.keywords) as string[]
+          console.log(`🔍 [${requestId}] Checking keywords ${keywords.join(', ')} against message "${messageText}"`)
+          
           const hasMatchingKeyword = keywords.some(keyword => 
             messageText.includes(keyword.toLowerCase())
           )
           
           if (hasMatchingKeyword) {
-            console.log(`🎯 [${requestId}] Triggering automation ${automation.id}`)
+            console.log(`🎯 [${requestId}] Keyword match found! Triggering automation ${automation.id}`)
             
             if (automation.actionType === "ai") {
               await ConversationManager.startConversation(
@@ -190,6 +241,8 @@ async function handleInstagramMessage(event: any, requestId: string) {
             await sendInstagramMessage(senderId, automation, recipientId, requestId)
             await logAutomationTrigger(automation.id, "dm", messageText, senderId)
             break
+          } else {
+            console.log(`❌ [${requestId}] No keyword match for automation ${automation.id}`)
           }
         }
       }
@@ -201,7 +254,7 @@ async function handleInstagramMessage(event: any, requestId: string) {
   }
 }
 
-async function handleInstagramComment(commentData: any, requestId: string) {
+async function handleInstagramComment(commentData: any, requestId: string, instagramAccountId: string) {
   console.log(`💭 [${requestId}] Processing Instagram comment:`, commentData)
   
   if (commentData.text) {
@@ -230,13 +283,27 @@ async function handleInstagramComment(commentData: any, requestId: string) {
           },
         })
         
-        if (!userInstagramAccount) continue
+        if (!userInstagramAccount) {
+          console.log(`❌ [${requestId}] No Instagram account found for automation user ${automation.userId}`)
+          continue
+        }
         
         // Check if business account
         const isBusinessAccount = userInstagramAccount.scope?.includes("instagram_manage_messages") || 
                                   userInstagramAccount.scope?.includes("instagram_manage_comments")
         
-        if (!isBusinessAccount) continue
+        if (!isBusinessAccount) {
+          console.log(`❌ [${requestId}] Instagram account ${userInstagramAccount.providerAccountId} doesn't have business permissions`)
+          continue
+        }
+        
+        // CRITICAL FIX: Check if this Instagram account is the one receiving the webhook event
+        if (userInstagramAccount.providerAccountId !== instagramAccountId) {
+          console.log(`❌ [${requestId}] Instagram account mismatch: automation owner has ${userInstagramAccount.providerAccountId}, webhook is for ${instagramAccountId}`)
+          continue
+        }
+        
+        console.log(`✅ [${requestId}] Instagram account match confirmed: ${userInstagramAccount.providerAccountId}`)
         
         // Prevent infinite loops - don't reply to business account's own comments
         if (commenterId === userInstagramAccount.providerAccountId) continue
@@ -252,7 +319,10 @@ async function handleInstagramComment(commentData: any, requestId: string) {
           postsToCheck = []
         }
         
-        if (postsToCheck.length > 0 && !postsToCheck.includes(postId)) continue
+        if (postsToCheck.length > 0 && !postsToCheck.includes(postId)) {
+          console.log(`❌ [${requestId}] Comment not on selected posts. Comment on ${postId}, automation configured for ${postsToCheck.join(', ')}`)
+          continue
+        }
         
         // Check keywords
         let keywords: string[] = []
@@ -263,11 +333,15 @@ async function handleInstagramComment(commentData: any, requestId: string) {
           keywords = []
         }
         
+        console.log(`🔍 [${requestId}] Checking keywords ${keywords.join(', ')} against comment "${commentText}"`)
+        
         const hasMatchingKeyword = keywords.some(keyword => 
           commentText.includes(keyword.toLowerCase())
         )
         
         if (hasMatchingKeyword) {
+          console.log(`🎯 [${requestId}] Keyword match found! Triggering automation ${automation.id}`)
+          
           // Handle Smart Follower Mode
           if (automation.dmMode === "smart_follower") {
             const trackedUser = await prisma.trackedUser.findUnique({
@@ -322,6 +396,8 @@ async function handleInstagramComment(commentData: any, requestId: string) {
           console.log(`🎯 [${requestId}] Triggering automation ${automation.id} for comment`)
           await replyToInstagramComment(commentId, automation, commenterId, requestId)
           break
+        } else {
+          console.log(`❌ [${requestId}] No keyword match for automation ${automation.id}`)
         }
       }
       
@@ -710,10 +786,10 @@ async function logAutomationTrigger(
         automationId,
         triggerType,
         triggerText,
-        instagramUserId: userId,
-        instagramUsername: username,
+        userId: userId,
+        username: username,
         isNewFollower: isNewFollower || false,
-        timestamp: new Date(),
+        triggeredAt: new Date(),
       },
     })
   } catch (error) {
