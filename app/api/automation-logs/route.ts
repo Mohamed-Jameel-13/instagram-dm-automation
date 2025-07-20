@@ -7,8 +7,8 @@ export async function POST(req: NextRequest) {
       automationId, 
       triggerType, 
       triggerText, 
-      instagramUserId, 
-      instagramUsername,
+      userId, 
+      username,
       timestamp 
     } = await req.json()
 
@@ -18,10 +18,10 @@ export async function POST(req: NextRequest) {
         automationId,
         triggerType,
         triggerText,
-        instagramUserId,
-        instagramUsername: instagramUsername || null,
+        userId,
+        username: username || null,
         isNewFollower: false,
-        timestamp: timestamp ? new Date(timestamp) : new Date(),
+        triggeredAt: timestamp ? new Date(timestamp) : new Date(),
       }
     })
 
@@ -48,7 +48,7 @@ export async function GET(req: NextRequest) {
 
     const logs = await prisma.automationLog.findMany({
       where,
-      orderBy: { timestamp: 'desc' },
+      orderBy: { triggeredAt: 'desc' },
       take: limit,
       include: {
         automation: {

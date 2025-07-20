@@ -7,6 +7,20 @@ export const runtime = 'nodejs'
 import { Redis } from '@upstash/redis'
 import { processInstagramEvent } from '@/lib/instagram-processor'
 
+// Webhook deduplication cache (in-memory)
+const processedWebhooks = new Map<string, { timestamp: number, result: any }>()
+const WEBHOOK_CACHE_TTL = 300000 // 5 minutes
+
+// Clean up old entries every minute
+setInterval(() => {
+  const now = Date.now()
+  for (const [key, value] of processedWebhooks.entries()) {
+    if (now - value.timestamp > WEBHOOK_CACHE_TTL) {
+      processedWebhooks.delete(key)
+    }
+  }
+}, 60000)
+
 // Temporarily disable Redis to fix queue issues and process webhooks inline
 let redis: Redis | null = null
 try {
@@ -95,11 +109,37 @@ export async function POST(req: NextRequest) {
     
     console.log(`✅ [${requestId}] Signature validated in ${Date.now() - startTime}ms`)
     
-    // 3. Queue the event for background processing (non-blocking)
+    // 3. Generate unique event ID for deduplication based on content
+    const parsedBody = JSON.parse(body)
+    let eventId = `${requestId}_${Buffer.from(body).toString('base64').slice(0, 20)}`
+    
+    // Create more specific event ID for comments
+    if (parsedBody.entry?.[0]?.changes?.[0]?.value?.comment_id) {
+      const comment = parsedBody.entry[0].changes[0].value
+      eventId = `comment_${comment.comment_id}_${comment.from?.id || 'unknown'}`
+    }
+    
+    // Check if we've already processed this exact webhook
+    if (processedWebhooks.has(eventId)) {
+      const cached = processedWebhooks.get(eventId)
+      console.log(`🚫 [${requestId}] Webhook already processed at ${new Date(cached!.timestamp).toISOString()}, returning cached result`)
+      return NextResponse.json({
+        success: true,
+        requestId,
+        cached: true,
+        originalTimestamp: cached!.timestamp,
+        result: cached!.result
+      })
+    }
+    
+    console.log(`🆔 [${requestId}] Generated event ID: ${eventId}`)
+    
+    // 4. Queue the event for background processing (non-blocking)
     const queueStart = Date.now()
     
     const eventData = {
       requestId,
+      eventId,
       timestamp: startTime,
       body: JSON.parse(body),
       signature,
@@ -127,9 +167,16 @@ export async function POST(req: NextRequest) {
         const result = await processInstagramEvent(eventData)
         console.log(`✅ [${requestId}] Event processed inline in ${Date.now() - startTime}ms`)
         
+        // Cache the result to prevent duplicate processing
+        processedWebhooks.set(eventId, {
+          timestamp: Date.now(),
+          result
+        })
+        
         return NextResponse.json({ 
           success: true, 
           requestId,
+          eventId,
           processedAt: new Date().toISOString(),
           processedInline: true,
           result
@@ -137,10 +184,17 @@ export async function POST(req: NextRequest) {
       } catch (processingError) {
         console.error(`💥 [${requestId}] Inline processing failed:`, processingError)
         
+        // Cache the error to prevent retrying the same failed event
+        processedWebhooks.set(eventId, {
+          timestamp: Date.now(),
+          result: { error: processingError instanceof Error ? processingError.message : "Processing failed" }
+        })
+        
         // Still return success to Instagram so they don't retry
         return NextResponse.json({ 
           success: true, 
           requestId,
+          eventId,
           processedAt: new Date().toISOString(),
           processingFailed: true,
           error: processingError instanceof Error ? processingError.message : "Processing failed"

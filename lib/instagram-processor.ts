@@ -4,6 +4,8 @@ import { prisma } from "@/lib/db"
 import { followerTracker } from "@/lib/follower-tracker"
 import { ConversationManager } from "@/lib/conversation-manager"
 import { Redis } from '@upstash/redis'
+import { DuplicateResponsePrevention } from "./duplicate-prevention"
+import { GlobalDuplicatePrevention } from "./global-duplicate-prevention"
 
 // Temporarily disable Redis caching to avoid compatibility issues
 let redis: Redis | null = null
@@ -71,45 +73,46 @@ export async function getAutomationRules(userId?: string, active = true) {
 export async function processInstagramEvent(eventData: any) {
   const { requestId, body } = eventData
   
-  console.log(`🔄 [${requestId}] Starting event processing...`)
+  console.log(`🔄 [${requestId}] Starting event processing with duplicate prevention...`)
   
-  try {
-    if (body.object === "instagram") {
-      for (const entry of body.entry) {
-        console.log(`📝 [${requestId}] Processing entry:`, JSON.stringify(entry, null, 2))
-        
-        const instagramAccountId = entry.id // This is the Instagram account that received the event
-        console.log(`📝 [${requestId}] Instagram account ID from webhook: ${instagramAccountId}`)
-        
-        // Handle Direct Messages
-        if (entry.messaging) {
-          console.log(`💬 [${requestId}] Found ${entry.messaging.length} messaging events`)
+  // Use duplicate prevention wrapper
+  return await DuplicateResponsePrevention.processWithDuplicatePrevention(
+    body,
+    async () => {
+      
+      if (body.object === "instagram") {
+        for (const entry of body.entry) {
+          console.log(`📝 [${requestId}] Processing entry:`, JSON.stringify(entry, null, 2))
           
-          for (const event of entry.messaging) {
-            await handleInstagramMessage(event, requestId, instagramAccountId)
+          const instagramAccountId = entry.id // This is the Instagram account that received the event
+          console.log(`📝 [${requestId}] Instagram account ID from webhook: ${instagramAccountId}`)
+          
+          // Handle Direct Messages
+          if (entry.messaging) {
+            console.log(`💬 [${requestId}] Found ${entry.messaging.length} messaging events`)
+            
+            for (const event of entry.messaging) {
+              await handleInstagramMessage(event, requestId, instagramAccountId)
+            }
           }
-        }
-        
-        // Handle Comments
-        if (entry.changes) {
-          console.log(`💭 [${requestId}] Found ${entry.changes.length} comment events`)
           
-          for (const change of entry.changes) {
-            if (change.field === "comments") {
-              await handleInstagramComment(change.value, requestId, instagramAccountId)
+          // Handle Comments
+          if (entry.changes) {
+            console.log(`💭 [${requestId}] Found ${entry.changes.length} comment events`)
+            
+            for (const change of entry.changes) {
+              if (change.field === "comments") {
+                await handleInstagramComment(change.value, requestId, instagramAccountId)
+              }
             }
           }
         }
       }
+      
+      console.log(`✅ [${requestId}] Event processing completed successfully`)
+      return { success: true, requestId }
     }
-    
-    console.log(`✅ [${requestId}] Event processing completed successfully`)
-    return { success: true, requestId }
-    
-  } catch (error) {
-    console.error(`💥 [${requestId}] Event processing failed:`, error)
-    throw error
-  }
+  )
 }
 
 async function handleInstagramMessage(event: any, requestId: string, instagramAccountId: string) {
@@ -267,6 +270,26 @@ async function handleInstagramComment(commentData: any, requestId: string, insta
     const postId = commentData.media?.id
     const parentId = commentData.parent_id
     
+    // CRITICAL FIX: Create a unique processing key to prevent duplicates
+    const processingKey = `comment_${commentId}_${commenterId}_${commentText.slice(0, 50)}`
+    
+    // Check if we've already processed this exact comment in the last 5 minutes
+    const recentLog = await prisma.automationLog.findFirst({
+      where: {
+        userId: commenterId,
+        triggerText: commentData.text,
+        triggeredAt: {
+          gte: new Date(Date.now() - 5 * 60 * 1000) // 5 minutes ago
+        }
+      },
+      orderBy: { triggeredAt: 'desc' }
+    })
+    
+    if (recentLog) {
+      console.log(`🚫 [${requestId}] Comment already processed recently at ${recentLog.triggeredAt}, skipping duplicate`)
+      return
+    }
+    
     try {
       // Get cached automation rules for comments
       const automations = await getAutomationRules(undefined, true)
@@ -342,62 +365,121 @@ async function handleInstagramComment(commentData: any, requestId: string, insta
         )
         
         if (hasMatchingKeyword) {
-          console.log(`🎯 [${requestId}] Keyword match found! Triggering automation ${automation.id}`)
+          console.log(`🎯 [${requestId}] Keyword match found! Checking for duplicates...`)
           
-          // Handle Smart Follower Mode
-          if (automation.dmMode === "smart_follower") {
-            const trackedUser = await prisma.trackedUser.findUnique({
-              where: {
-                userId_instagramUserId: {
-                  userId: automation.userId,
-                  instagramUserId: commenterId
-                }
-              }
-            })
+          // NUCLEAR OPTION: Double-check with global system before any processing
+          const testMessage = automation.message || "test message"
+          if (!GlobalDuplicatePrevention.canSendMessage(commentId, commenterId, automation.id, testMessage)) {
+            console.log(`🚫 [${requestId}] NUCLEAR BLOCK: Global duplicate prevention blocked this comment processing`)
+            continue // Skip to next automation
+          }
+          
+          // ENHANCED DUPLICATE PREVENTION: Use our new system
+          const bestAutomation = await DuplicateResponsePrevention.getBestMatchingAutomation(
+            commentAutomations,
+            commentText,
+            automation.userId,
+            automation.triggerType
+          )
+          
+          // Only process if this is the best matching automation
+          if (bestAutomation?.id !== automation.id) {
+            console.log(`⏭️ [${requestId}] Skipping automation ${automation.id}, better match found: ${bestAutomation?.id}`)
+            continue
+          }
+          
+          // Check for database-level duplicates
+          const isDuplicateInDB = await DuplicateResponsePrevention.isDuplicateResponseInDatabase(
+            automation.id,
+            commenterId,
+            commentData.text
+          )
+          
+          if (isDuplicateInDB) {
+            console.log(`🚫 [${requestId}] Duplicate response detected in database for automation ${automation.id}`)
+            continue
+          }
+          
+          // Create processing lock to prevent race conditions
+          const lockAcquired = await DuplicateResponsePrevention.createUniqueProcessingLock(
+            `comment_${commentId}`,
+            automation.id,
+            commenterId
+          )
+          
+          if (!lockAcquired) {
+            console.log(`🔒 [${requestId}] Another process is handling this comment, skipping...`)
+            continue
+          }
+          
+          try {
+            console.log(`🎯 [${requestId}] Processing automation ${automation.id} for comment`)
             
-            if (!trackedUser) {
-              // First comment - track user but don't send DM
-              await prisma.trackedUser.create({
-                data: {
-                  userId: automation.userId,
-                  instagramUserId: commenterId,
-                  status: "first_commenter"
-                }
-              })
-              console.log(`👤 [${requestId}] Tracked new user ${commenterId} as first_commenter`)
-              continue
-            } else if (trackedUser.status === "first_commenter") {
-              // Second comment - upgrade to trusted and send DM
-              await prisma.trackedUser.update({
+            // Handle Smart Follower Mode
+            if (automation.dmMode === "smart_follower") {
+              const trackedUser = await prisma.trackedUser.findUnique({
                 where: {
                   userId_instagramUserId: {
                     userId: automation.userId,
                     instagramUserId: commenterId
                   }
-                },
-                data: {
-                  status: "trusted",
-                  updatedAt: new Date()
                 }
               })
-              console.log(`🎯 [${requestId}] Upgraded user ${commenterId} to trusted`)
+              
+              if (!trackedUser) {
+                // First comment - track user but don't send DM
+                await prisma.trackedUser.create({
+                  data: {
+                    userId: automation.userId,
+                    instagramUserId: commenterId,
+                    status: "first_commenter"
+                  }
+                })
+                console.log(`👤 [${requestId}] Tracked new user ${commenterId} as first_commenter`)
+                continue
+              } else if (trackedUser.status === "first_commenter") {
+                // Second comment - upgrade to trusted and send DM
+                await prisma.trackedUser.update({
+                  where: {
+                    userId_instagramUserId: {
+                      userId: automation.userId,
+                      instagramUserId: commenterId
+                    }
+                  },
+                  data: {
+                    status: "trusted",
+                    updatedAt: new Date()
+                  }
+                })
+                console.log(`🎯 [${requestId}] Upgraded user ${commenterId} to trusted`)
+              }
             }
-          }
-          
-          // Handle follow_comment trigger
-          if (automation.triggerType === "follow_comment") {
-            const isNewFollower = await followerTracker.isNewFollower(automation.userId, commenterId)
-            if (!isNewFollower) continue
             
-            await followerTracker.markFollowerCommented(automation.userId, commenterId)
-            await logAutomationTrigger(automation.id, "follow_comment", commentData.text, commenterId, commenterUsername, true)
-          } else {
-            await logAutomationTrigger(automation.id, "comment", commentData.text, commenterId, commenterUsername, false)
+            // Handle follow_comment trigger
+            if (automation.triggerType === "follow_comment") {
+              const isNewFollower = await followerTracker.isNewFollower(automation.userId, commenterId)
+              if (!isNewFollower) continue
+              
+              await followerTracker.markFollowerCommented(automation.userId, commenterId)
+              await logAutomationTrigger(automation.id, "follow_comment", commentData.text, commenterId, commenterUsername, true)
+            } else {
+              await logAutomationTrigger(automation.id, "comment", commentData.text, commenterId, commenterUsername, false)
+            }
+            
+            await replyToInstagramComment(commentId, automation, commenterId, requestId)
+            
+            // ABSOLUTE FINAL FIX: Return immediately after processing ANY automation
+            // This ensures NO OTHER AUTOMATIONS can process the same comment
+            console.log(`✅ [${requestId}] Comment processed successfully by automation ${automation.id}, STOPPING ALL FURTHER PROCESSING`)
+            return // Exit the entire function immediately
+            
+          } finally {
+            // Always release the processing lock
+            await DuplicateResponsePrevention.releaseProcessingLock(
+              `comment_${commentId}`,
+              automation.id
+            )
           }
-          
-          console.log(`🎯 [${requestId}] Triggering automation ${automation.id} for comment`)
-          await replyToInstagramComment(commentId, automation, commenterId, requestId)
-          break
         } else {
           console.log(`❌ [${requestId}] No keyword match for automation ${automation.id}`)
         }
@@ -506,7 +588,43 @@ async function sendInstagramAIMessage(recipientId: string, automation: any, page
 async function replyToInstagramComment(commentId: string, automation: any, commenterId: string, requestId: string) {
   console.log(`💭 [${requestId}] Replying to comment ${commentId}`)
   
+  // CRITICAL FIX: Add duplicate prevention at the function level
+  const processingLockId = `reply_${commentId}_${automation.id}_${commenterId}`;
+  
   try {
+    // Get response message first to check against global prevention
+    let responseMessage = ""
+    if (automation.actionType === "ai" && automation.aiPrompt) {
+      responseMessage = await generateAIResponse(automation.aiPrompt, automation.message || "Thanks for your comment!")
+    } else if (automation.message) {
+      responseMessage = automation.message
+    } else {
+      throw new Error("No DM message configured")
+    }
+    
+    // GLOBAL DUPLICATE PREVENTION: Check if we can send this message
+    if (!GlobalDuplicatePrevention.canSendMessage(commentId, commenterId, automation.id, responseMessage)) {
+      console.log(`🚫 [${requestId}] GLOBAL BLOCK: Message blocked by global duplicate prevention`)
+      return;
+    }
+    
+    // Check if this exact reply has been processed recently in database
+    const recentReply = await prisma.automationLog.findFirst({
+      where: {
+        automationId: automation.id,
+        userId: commenterId,
+        triggerType: automation.triggerType,
+        triggeredAt: {
+          gte: new Date(Date.now() - 2 * 60 * 1000) // 2 minutes ago
+        }
+      }
+    });
+    
+    if (recentReply) {
+      console.log(`🚫 [${requestId}] DB BLOCK: Reply already sent recently at ${recentReply.triggeredAt}, skipping duplicate`);
+      return;
+    }
+    
     const account = await prisma.account.findFirst({
       where: {
         userId: automation.userId,
@@ -518,24 +636,46 @@ async function replyToInstagramComment(commentId: string, automation: any, comme
       throw new Error("No Instagram access token found")
     }
     
-    // Get comment reply message
-    let commentReplyMessage = ""
-    if (automation.actionType === "ai" && automation.aiPrompt) {
-      commentReplyMessage = await generateAIResponse(automation.aiPrompt, automation.commentReply || "Thanks for your comment!")
-    } else if (automation.commentReply) {
-      commentReplyMessage = automation.commentReply
-    } else if (automation.message) {
-      commentReplyMessage = automation.message
-    } else {
-      throw new Error("No response message configured")
+    // FIXED LOGIC: Only send private DM, not both comment reply and DM
+    // Based on Instagram's Private Reply feature, we use the comment_id as recipient
+    
+    // Response message already determined above - use it directly
+    
+    // Send ONLY the private reply (this replaces both comment reply and DM)
+    console.log(`📩 [${requestId}] Sending single private reply for comment ${commentId}`)
+    
+    const dmResponse = await fetch(`https://graph.instagram.com/v18.0/${account.providerAccountId}/messages`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${account.access_token}`,
+      },
+      body: JSON.stringify({
+        recipient: { 
+          comment_id: commentId 
+        },
+        message: { 
+          text: responseMessage 
+        }
+      }),
+    })
+    
+    if (!dmResponse.ok) {
+      const errorText = await dmResponse.text()
+      console.error(`❌ [${requestId}] Private reply failed:`, errorText)
+      throw new Error(`Private reply failed: ${errorText}`)
     }
     
-    // Reply to comment with retry logic
-    await replyToCommentWithRetry(account, commentId, commentReplyMessage, requestId)
+    console.log(`✅ [${requestId}] Single private reply sent successfully`)
     
-    // Send private DM if configured
-    if (automation.message && automation.message.trim() !== "") {
-      await sendPrivateReplyToComment(commentId, automation, commenterId, requestId)
+    // MARK MESSAGE AS SENT in global prevention system
+    GlobalDuplicatePrevention.markMessageSent(commentId, commenterId, automation.id, responseMessage)
+    console.log(`🔒 [${requestId}] Message marked in global duplicate prevention system`)
+    
+    // Optional: Send comment reply if specifically configured
+    if (automation.commentReply && automation.commentReply.trim() !== "") {
+      console.log(`💬 [${requestId}] Also sending public comment reply`)
+      await replyToCommentWithRetry(account, commentId, automation.commentReply, requestId)
     }
     
   } catch (error) {
