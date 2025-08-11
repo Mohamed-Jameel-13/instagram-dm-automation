@@ -1,46 +1,54 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { Redis } from '@upstash/redis'
 
-const redis = process.env.REDIS_URL ? new Redis({
-  url: process.env.REDIS_URL!,
-  token: process.env.REDIS_TOKEN!,
-}) : null
+export const runtime = 'nodejs'
 
 export async function GET(req: NextRequest) {
   try {
-    console.log("🔍 Fetching recent webhook events...")
-    
-    let events = []
-    
-    if (redis) {
-      // Get last 5 events from Redis
-      const eventData = await redis.lrange('instagram_events', 0, 4)
-      events = eventData.map(data => {
-        try {
-          return JSON.parse(data)
-        } catch (e) {
-          return { error: 'Invalid JSON', data }
-        }
-      })
-    }
+    console.log("🔍 Webhook Monitor - Checking system status...")
     
     return NextResponse.json({
       success: true,
-      events,
-      message: redis ? `Found ${events.length} recent webhook events` : "Redis not available - events processed inline",
+      status: "Webhook monitor active",
+      time: new Date().toISOString(),
+      message: "This endpoint confirms your webhook URL is accessible",
+      webhookUrl: "https://instagram-dm-automation.vercel.app/api/webhooks/instagram",
       instructions: [
-        "1. Go to your Instagram account @writesparkai",
-        "2. Comment 'hello' on any post",
-        "3. Refresh this endpoint to see the webhook event",
-        "4. Check if automation responds to your comment"
-      ]
+        "1. Configure Instagram webhook URL in Meta Developer Console",
+        "2. Comment on your Instagram post with trigger keywords", 
+        "3. Monitor Vercel function logs for webhook activity",
+        "4. Check for duplicate prevention messages in logs"
+      ],
+      diagnostics: "Visit /api/webhook-diagnosis for comprehensive system check"
     })
     
   } catch (error) {
     console.error("Webhook monitor error:", error)
     return NextResponse.json(
-      { error: "Failed to fetch webhook events" },
+      { error: "Failed to check webhook status" },
       { status: 500 }
     )
+  }
+}
+
+export async function POST(req: NextRequest) {
+  try {
+    const body = await req.text()
+    const headers = Object.fromEntries(req.headers.entries())
+    
+    console.log("🚨 WEBHOOK MONITOR - Raw webhook received:")
+    console.log("Headers:", JSON.stringify(headers, null, 2))
+    console.log("Body:", body)
+    console.log("Time:", new Date().toISOString())
+    
+    return NextResponse.json({
+      status: "received",
+      time: new Date().toISOString(),
+      bodyLength: body.length,
+      hasSignature: !!headers['x-hub-signature-256'],
+      message: "Webhook received and logged - check console for details"
+    })
+  } catch (error) {
+    console.error("Webhook monitor error:", error)
+    return NextResponse.json({ error: "Failed to process webhook" }, { status: 500 })
   }
 } 

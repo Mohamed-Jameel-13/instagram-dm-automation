@@ -72,7 +72,7 @@ export async function POST(req: NextRequest) {
     let apiWorking = false
     try {
       const testResponse = await fetch(
-        `https://graph.instagram.com/v18.0/${instagramAccount.providerAccountId}?fields=id,username&access_token=${instagramAccount.access_token}`
+        `https://graph.facebook.com/v18.0/${instagramAccount.providerAccountId}?fields=id,username&access_token=${instagramAccount.access_token}`
       )
       
       if (testResponse.ok) {

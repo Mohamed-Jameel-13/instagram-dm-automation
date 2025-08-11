@@ -118,3 +118,16 @@ model ConversationSession {
 
   @@unique([userId, instagramUserId, automationId])
 }
+
+model ProcessedWebhook {
+  id          String   @id @default(cuid())
+  eventId     String   @unique
+  requestId   String
+  webhookBody String?
+  processedAt DateTime @default(now())
+  result      String?
+  createdAt   DateTime @default(now())
+
+  @@index([eventId])
+  @@index([processedAt])
+}

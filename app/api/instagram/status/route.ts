@@ -34,7 +34,7 @@ export async function GET(req: NextRequest) {
 
     // Test if the access token is still valid using Basic Display API
     try {
-      const response = await fetch(`https://graph.instagram.com/me?fields=id,username&access_token=${account.access_token}`)
+      const response = await fetch(`https://graph.facebook.com/me?fields=id,username&access_token=${account.access_token}`)
       
       if (!response.ok) {
         // Token is invalid, remove the account

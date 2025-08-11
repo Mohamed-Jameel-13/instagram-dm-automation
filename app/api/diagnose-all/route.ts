@@ -44,7 +44,7 @@ export async function GET(req: NextRequest) {
       // Test Instagram API
       try {
         const apiResponse = await fetch(
-          `https://graph.instagram.com/v18.0/${instagramAccount.providerAccountId}?fields=id,username,account_type&access_token=${instagramAccount.access_token}`
+          `https://graph.facebook.com/v18.0/${instagramAccount.providerAccountId}?fields=id,username,account_type&access_token=${instagramAccount.access_token}`
         )
         
         if (apiResponse.ok) {

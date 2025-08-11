@@ -1,13 +1,32 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/db"
 
+type ApiTestResult =
+  | { success: true; accountType: string; username: string; id: string }
+  | { success: false; error: string; status?: number }
+  | { success: false; error: string }
+
+type AccountDebug = {
+  userId: string
+  providerAccountId: string
+  hasAccessToken: boolean
+  accessTokenPreview: string | null
+  scope: string | null
+  hasMessagingScope?: boolean
+  hasCommentsScope?: boolean
+  tokenStatus: "unknown" | "valid" | "invalid" | "error"
+  apiTest: ApiTestResult | null
+}
+
+type Issue = { account: string; issue: string; solution: string }
+
 export async function GET(req: NextRequest) {
   const requestId = `debug_instagram_${Date.now()}`
   
   try {
     console.log(`🔍 [${requestId}] Starting Instagram configuration debug...`)
     
-    const debug = {
+    const debug: { accounts: AccountDebug[]; issues: Issue[]; recommendations: string[] } = {
       accounts: [],
       issues: [],
       recommendations: []
@@ -27,7 +46,7 @@ export async function GET(req: NextRequest) {
     console.log(`🔍 [${requestId}] Found ${instagramAccounts.length} Instagram accounts`)
     
     for (const account of instagramAccounts) {
-      const accountDebug = {
+      const accountDebug: AccountDebug = {
         userId: account.userId,
         providerAccountId: account.providerAccountId,
         hasAccessToken: !!account.access_token,
@@ -47,7 +66,7 @@ export async function GET(req: NextRequest) {
           
           // Test basic API call
           const response = await fetch(
-            `https://graph.instagram.com/v18.0/${account.providerAccountId}?fields=id,username,account_type&access_token=${account.access_token}`
+            `https://graph.facebook.com/v18.0/${account.providerAccountId}?fields=id,username,account_type&access_token=${account.access_token}`
           )
           
           if (response.ok) {

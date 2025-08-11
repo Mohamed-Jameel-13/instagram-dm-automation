@@ -36,7 +36,7 @@ export async function GET(req: NextRequest) {
 
     try {
       // Try to get post details using Basic Display API
-      const response = await fetch(`https://graph.instagram.com/${postId}?fields=id,caption,media_type,media_url,thumbnail_url,timestamp,permalink&access_token=${instagramAPI.token}`)
+      const response = await fetch(`https://graph.facebook.com/${postId}?fields=id,caption,media_type,media_url,thumbnail_url,timestamp,permalink&access_token=${instagramAPI.token}`)
       
       if (response.ok) {
         const postData = await response.json()

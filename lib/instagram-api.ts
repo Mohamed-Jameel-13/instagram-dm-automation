@@ -42,7 +42,7 @@ export class InstagramAPI {
    */
   async sendMessage(recipientId: string, message: string, pageId: string): Promise<boolean> {
     try {
-      const response = await fetch(`https://graph.instagram.com/v18.0/${pageId}/messages`, {
+      const response = await fetch(`https://graph.facebook.com/v18.0/${pageId}/messages`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -77,7 +77,7 @@ export class InstagramAPI {
    */
   async replyToComment(commentId: string, message: string): Promise<boolean> {
     try {
-      const response = await fetch(`https://graph.instagram.com/v18.0/${commentId}/replies`, {
+      const response = await fetch(`https://graph.facebook.com/v18.0/${commentId}/replies`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -157,7 +157,7 @@ export class InstagramAPI {
   async subscribeToWebhooks(pageId: string, callbackUrl: string, verifyToken: string): Promise<boolean> {
     try {
       const response = await fetch(
-        `https://graph.instagram.com/v18.0/${pageId}/subscribed_apps`,
+        `https://graph.facebook.com/v18.0/${pageId}/subscribed_apps`,
         {
           method: 'POST',
           headers: {

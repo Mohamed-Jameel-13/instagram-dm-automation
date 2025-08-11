@@ -96,7 +96,7 @@ export function InstagramConnection({ onConnectionSuccess, compact = false }: In
       
       // First try Business API endpoint
       try {
-        response = await fetch(`https://graph.instagram.com/me?fields=id,username,account_type&access_token=${cleanToken}`)
+        response = await fetch(`https://graph.facebook.com/me?fields=id,username,account_type&access_token=${cleanToken}`)
         if (response.ok) {
           accountData = await response.json()
           tokenType = "business"
@@ -108,7 +108,7 @@ export function InstagramConnection({ onConnectionSuccess, compact = false }: In
       
       // If Business API failed, try Basic Display API
       if (!response || !response.ok) {
-        response = await fetch(`https://graph.instagram.com/me?fields=id,username&access_token=${cleanToken}`)
+        response = await fetch(`https://graph.facebook.com/me?fields=id,username&access_token=${cleanToken}`)
         if (response.ok) {
           accountData = await response.json()
           tokenType = "basic_display"

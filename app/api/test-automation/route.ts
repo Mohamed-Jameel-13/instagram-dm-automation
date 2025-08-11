@@ -44,7 +44,7 @@ export async function GET(req: NextRequest) {
         if (account.access_token) {
           try {
             const response = await fetch(
-              `https://graph.instagram.com/v18.0/${account.providerAccountId}?fields=id,username,account_type&access_token=${account.access_token}`
+              `https://graph.facebook.com/v18.0/${account.providerAccountId}?fields=id,username,account_type&access_token=${account.access_token}`
             )
             
             if (response.ok) {
@@ -163,7 +163,7 @@ export async function GET(req: NextRequest) {
         if (account?.access_token) {
           // Test if we can get conversations (doesn't actually send)
           const conversationsResponse = await fetch(
-            `https://graph.instagram.com/v18.0/${account.providerAccountId}/conversations?access_token=${account.access_token}`
+            `https://graph.facebook.com/v18.0/${account.providerAccountId}/conversations?access_token=${account.access_token}`
           )
           
           if (conversationsResponse.ok) {

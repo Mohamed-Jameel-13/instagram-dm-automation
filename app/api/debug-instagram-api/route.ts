@@ -35,7 +35,7 @@ export async function POST(req: NextRequest) {
     console.log(`🔍 [${requestId}] Test 1: Basic Instagram API access...`)
     try {
       const response1 = await fetch(
-        `https://graph.instagram.com/v18.0/${account.providerAccountId}?fields=id,username,account_type&access_token=${account.access_token}`
+          `https://graph.facebook.com/v18.0/${account.providerAccountId}?fields=id,username,account_type&access_token=${account.access_token}`
       )
       
       if (response1.ok) {
@@ -54,7 +54,7 @@ export async function POST(req: NextRequest) {
     try {
       const testCommentId = "test_comment_123"
       const response2 = await fetch(
-        `https://graph.instagram.com/v18.0/${testCommentId}/replies`,
+          `https://graph.facebook.com/v18.0/${testCommentId}/replies`,
         {
           method: 'POST',
           headers: {
@@ -81,7 +81,7 @@ export async function POST(req: NextRequest) {
     console.log(`🔍 [${requestId}] Test 3: Private message endpoint...`)
     try {
       const response3 = await fetch(
-        `https://graph.instagram.com/v18.0/${account.providerAccountId}/messages`,
+          `https://graph.facebook.com/v18.0/${account.providerAccountId}/messages`,
         {
           method: 'POST',
           headers: {
@@ -113,7 +113,7 @@ export async function POST(req: NextRequest) {
     console.log(`🔍 [${requestId}] Test 4: Alternative comment endpoint...`)
     try {
       const response4 = await fetch(
-        `https://graph.instagram.com/v18.0/${account.providerAccountId}/comments`,
+          `https://graph.facebook.com/v18.0/${account.providerAccountId}/comments`,
         {
           method: 'POST',
           headers: {

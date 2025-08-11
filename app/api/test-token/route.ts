@@ -33,7 +33,7 @@ export async function POST(req: NextRequest) {
     try {
       console.log(`🧪 [${requestId}] Testing basic profile access...`)
       const profileResponse = await fetch(
-        `https://graph.instagram.com/me?fields=id,username,account_type&access_token=${accessToken}`
+        `https://graph.facebook.com/me?fields=id,username,account_type&access_token=${accessToken}`
       )
       
       if (profileResponse.ok) {
@@ -54,7 +54,7 @@ export async function POST(req: NextRequest) {
       } else {
         // Try Basic Display API format
         const basicResponse = await fetch(
-          `https://graph.instagram.com/me?fields=id,username&access_token=${accessToken}`
+          `https://graph.facebook.com/me?fields=id,username&access_token=${accessToken}`
         )
         
         if (basicResponse.ok) {
@@ -80,7 +80,7 @@ export async function POST(req: NextRequest) {
       try {
         console.log(`🧪 [${requestId}] Testing messaging permissions...`)
         const conversationResponse = await fetch(
-          `https://graph.instagram.com/v18.0/${results.accountInfo.id}/conversations?access_token=${accessToken}`
+          `https://graph.facebook.com/v18.0/${results.accountInfo.id}/conversations?access_token=${accessToken}`
         )
         
         if (conversationResponse.ok) {
@@ -100,7 +100,7 @@ export async function POST(req: NextRequest) {
       try {
         console.log(`🧪 [${requestId}] Testing comments permissions...`)
         const mediaResponse = await fetch(
-          `https://graph.instagram.com/v18.0/${results.accountInfo.id}/media?fields=id&limit=1&access_token=${accessToken}`
+          `https://graph.facebook.com/v18.0/${results.accountInfo.id}/media?fields=id&limit=1&access_token=${accessToken}`
         )
         
         if (mediaResponse.ok) {

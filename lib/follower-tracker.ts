@@ -15,7 +15,7 @@ export class FollowerTracker {
       console.log(`Fetching followers for Instagram user: ${instagramUserId}`)
       
       // Instagram Graph API endpoint for followers
-      const url = `https://graph.instagram.com/v18.0/${instagramUserId}/followers?fields=id,username&access_token=${accessToken}`
+      const url = `https://graph.facebook.com/v18.0/${instagramUserId}/followers?fields=id,username&access_token=${accessToken}`
       
       const response = await fetch(url)
       const data = await response.json()

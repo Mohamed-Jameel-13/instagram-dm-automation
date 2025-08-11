@@ -6,20 +6,53 @@ export const runtime = 'nodejs'
 // Import Redis for queueing (Edge-compatible)
 import { Redis } from '@upstash/redis'
 import { processInstagramEvent } from '@/lib/instagram-processor'
+import { prisma } from '@/lib/db'
 
-// Webhook deduplication cache (in-memory)
-const processedWebhooks = new Map<string, { timestamp: number, result: any }>()
-const WEBHOOK_CACHE_TTL = 300000 // 5 minutes
-
-// Clean up old entries every minute
-setInterval(() => {
-  const now = Date.now()
-  for (const [key, value] of processedWebhooks.entries()) {
-    if (now - value.timestamp > WEBHOOK_CACHE_TTL) {
-      processedWebhooks.delete(key)
+// Database-based webhook deduplication (replaces in-memory cache)
+// This prevents race conditions that cause duplicate processing
+async function isWebhookAlreadyProcessed(eventId: string): Promise<{ processed: boolean, result?: any }> {
+  try {
+    const existingWebhook = await prisma.processedWebhook.findUnique({
+      where: { eventId }
+    })
+    
+    if (existingWebhook) {
+      return { 
+        processed: true, 
+        result: existingWebhook.result ? JSON.parse(existingWebhook.result) : null 
+      }
     }
+    
+    return { processed: false }
+  } catch (error) {
+    console.error('Error checking webhook processing status:', error)
+    return { processed: false }
   }
-}, 60000)
+}
+
+async function markWebhookAsProcessed(eventId: string, requestId: string, webhookBody: any, result: any): Promise<void> {
+  try {
+    await prisma.processedWebhook.create({
+      data: {
+        eventId,
+        requestId,
+        webhookBody: typeof webhookBody === 'string' ? webhookBody : JSON.stringify(webhookBody),
+        result: typeof result === 'string' ? result : JSON.stringify(result)
+      }
+    })
+    
+    // Clean up old entries (older than 24 hours) to prevent table growth
+    await prisma.processedWebhook.deleteMany({
+      where: {
+        processedAt: {
+          lt: new Date(Date.now() - 24 * 60 * 60 * 1000) // 24 hours ago
+        }
+      }
+    })
+  } catch (error) {
+    console.error('Error marking webhook as processed:', error)
+  }
+}
 
 // Temporarily disable Redis to fix queue issues and process webhooks inline
 let redis: Redis | null = null
@@ -102,6 +135,10 @@ export async function POST(req: NextRequest) {
     console.log(`🔐 [${requestId}] Validating Instagram webhook signature...`)
     
     // 2. Validate signature (fast check)
+    console.log(`🔍 [${requestId}] Debug: Available Instagram env vars:`, Object.keys(process.env).filter(k => k.startsWith('INSTAGRAM')))
+    console.log(`🔍 [${requestId}] Debug: Has INSTAGRAM_ACCESS_TOKEN:`, !!process.env.INSTAGRAM_ACCESS_TOKEN)
+    console.log(`🔍 [${requestId}] Debug: Has INSTAGRAM_CLIENT_SECRET:`, !!process.env.INSTAGRAM_CLIENT_SECRET)
+    
     if (!(await validateInstagramSignature(body, signature))) {
       console.error(`❌ [${requestId}] Invalid signature`)
       return NextResponse.json({ error: "Invalid signature" }, { status: 401 })
@@ -119,22 +156,21 @@ export async function POST(req: NextRequest) {
       eventId = `comment_${comment.comment_id}_${comment.from?.id || 'unknown'}`
     }
     
-    // Check if we've already processed this exact webhook
-    if (processedWebhooks.has(eventId)) {
-      const cached = processedWebhooks.get(eventId)
-      console.log(`🚫 [${requestId}] Webhook already processed at ${new Date(cached!.timestamp).toISOString()}, returning cached result`)
+    console.log(`🆔 [${requestId}] Generated event ID: ${eventId}`)
+    
+    // 4. Check if we've already processed this exact webhook (DATABASE-BASED DEDUPLICATION)
+    const webhookStatus = await isWebhookAlreadyProcessed(eventId)
+    if (webhookStatus.processed) {
+      console.log(`🚫 [${requestId}] Webhook already processed in database, returning cached result`)
       return NextResponse.json({
         success: true,
         requestId,
         cached: true,
-        originalTimestamp: cached!.timestamp,
-        result: cached!.result
+        result: webhookStatus.result
       })
     }
     
-    console.log(`🆔 [${requestId}] Generated event ID: ${eventId}`)
-    
-    // 4. Queue the event for background processing (non-blocking)
+    // 5. Queue the event for background processing (non-blocking)
     const queueStart = Date.now()
     
     const eventData = {
@@ -167,11 +203,8 @@ export async function POST(req: NextRequest) {
         const result = await processInstagramEvent(eventData)
         console.log(`✅ [${requestId}] Event processed inline in ${Date.now() - startTime}ms`)
         
-        // Cache the result to prevent duplicate processing
-        processedWebhooks.set(eventId, {
-          timestamp: Date.now(),
-          result
-        })
+        // Mark webhook as processed in database
+        await markWebhookAsProcessed(eventId, requestId, parsedBody, result)
         
         return NextResponse.json({ 
           success: true, 
@@ -184,11 +217,9 @@ export async function POST(req: NextRequest) {
       } catch (processingError) {
         console.error(`💥 [${requestId}] Inline processing failed:`, processingError)
         
-        // Cache the error to prevent retrying the same failed event
-        processedWebhooks.set(eventId, {
-          timestamp: Date.now(),
-          result: { error: processingError instanceof Error ? processingError.message : "Processing failed" }
-        })
+        // Mark failed processing in database to prevent retrying the same failed event
+        const errorResult = { error: processingError instanceof Error ? processingError.message : "Processing failed" }
+        await markWebhookAsProcessed(eventId, requestId, parsedBody, errorResult)
         
         // Still return success to Instagram so they don't retry
         return NextResponse.json({ 

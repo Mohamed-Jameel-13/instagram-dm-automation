@@ -41,7 +41,7 @@ export async function POST(req: NextRequest) {
     console.log("✅ Basic validation passed, testing access token...")
 
     // Verify the access token is valid using Basic Display API
-    const testResponse = await fetch(`https://graph.instagram.com/me?fields=id,username&access_token=${accessToken}`)
+    const testResponse = await fetch(`https://graph.facebook.com/me?fields=id,username&access_token=${accessToken}`)
     
     if (!testResponse.ok) {
       console.error("❌ Instagram API validation failed:", testResponse.status, testResponse.statusText)
@@ -76,7 +76,7 @@ export async function POST(req: NextRequest) {
     try {
       // Test if this is a Business API token by checking business-specific endpoint
       const businessTestResponse = await fetch(
-        `https://graph.instagram.com/v18.0/${instagramId}?fields=id,username,account_type&access_token=${accessToken}`
+        `https://graph.facebook.com/v18.0/${instagramId}?fields=id,username,account_type&access_token=${accessToken}`
       )
       
       if (businessTestResponse.ok) {
@@ -89,7 +89,7 @@ export async function POST(req: NextRequest) {
       
       // Additional test: Try to access conversations endpoint (requires messaging permission)
       const conversationTestResponse = await fetch(
-        `https://graph.instagram.com/v18.0/${instagramId}/conversations?access_token=${accessToken}`
+        `https://graph.facebook.com/v18.0/${instagramId}/conversations?access_token=${accessToken}`
       )
       
       if (conversationTestResponse.ok) {

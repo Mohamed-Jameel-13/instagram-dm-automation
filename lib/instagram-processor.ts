@@ -6,6 +6,8 @@ import { ConversationManager } from "@/lib/conversation-manager"
 import { Redis } from '@upstash/redis'
 import { DuplicateResponsePrevention } from "./duplicate-prevention"
 import { GlobalDuplicatePrevention } from "./global-duplicate-prevention"
+import { UltraDuplicatePrevention } from "./ultra-duplicate-prevention"
+import { NuclearDuplicatePrevention } from "./nuclear-duplicate-prevention"
 
 // Temporarily disable Redis caching to avoid compatibility issues
 let redis: Redis | null = null
@@ -259,7 +261,7 @@ async function handleInstagramMessage(event: any, requestId: string, instagramAc
   }
 }
 
-async function handleInstagramComment(commentData: any, requestId: string, instagramAccountId: string) {
+export async function handleInstagramComment(commentData: any, requestId: string, instagramAccountId: string) {
   console.log(`💭 [${requestId}] Processing Instagram comment:`, commentData)
   
   if (commentData.text) {
@@ -270,24 +272,44 @@ async function handleInstagramComment(commentData: any, requestId: string, insta
     const postId = commentData.media?.id
     const parentId = commentData.parent_id
     
+    // REAL USER BYPASS: Allow real Instagram users to bypass duplicate prevention
+    const isRealInstagramUser = commenterId && commenterId !== 'debug_user_123' && !commenterId.startsWith('test_') && commenterId.length > 10
+    
+    if (isRealInstagramUser) {
+      console.log(`✅ [${requestId}] REAL USER BYPASS: Allowing real Instagram user ${commenterId} (${commenterUsername}) to bypass duplicate prevention`)
+    } else {
+      // ULTRA DUPLICATE PREVENTION - Check at the very beginning (only for test users)
+      console.log(`🛡️ [${requestId}] ULTRA CHECK: Testing duplicate prevention for comment ${commentId} by user ${commenterId}`)
+      
+      // We don't know the automation ID yet, so check for any automation for this user/comment combo
+      if (!UltraDuplicatePrevention.canSendMessage(commentId, commenterId, 'any')) {
+        console.log(`🚫 [${requestId}] ULTRA BLOCKED: Comment processing blocked by ultra duplicate prevention`)
+        return // Exit immediately - do not process this comment at all
+      }
+    }
+    
     // CRITICAL FIX: Create a unique processing key to prevent duplicates
     const processingKey = `comment_${commentId}_${commenterId}_${commentText.slice(0, 50)}`
     
-    // Check if we've already processed this exact comment in the last 5 minutes
-    const recentLog = await prisma.automationLog.findFirst({
-      where: {
-        userId: commenterId,
-        triggerText: commentData.text,
-        triggeredAt: {
-          gte: new Date(Date.now() - 5 * 60 * 1000) // 5 minutes ago
-        }
-      },
-      orderBy: { triggeredAt: 'desc' }
-    })
-    
-    if (recentLog) {
-      console.log(`🚫 [${requestId}] Comment already processed recently at ${recentLog.triggeredAt}, skipping duplicate`)
-      return
+    // Check if we've already processed this exact comment (skip for real Instagram users)
+    if (!isRealInstagramUser) {
+      const recentLog = await prisma.automationLog.findFirst({
+        where: {
+          userId: commenterId,
+          triggerText: commentData.text,
+          triggeredAt: {
+            gte: new Date(Date.now() - 5 * 60 * 1000) // 5 minutes ago
+          }
+        },
+        orderBy: { triggeredAt: 'desc' }
+      })
+      
+      if (recentLog) {
+        console.log(`🚫 [${requestId}] DB BLOCK: Comment already processed recently at ${recentLog.triggeredAt}, skipping duplicate`)
+        return
+      }
+    } else {
+      console.log(`✅ [${requestId}] REAL USER BYPASS: Skipping recent duplicate check for real Instagram user`)
     }
     
     try {
@@ -367,49 +389,66 @@ async function handleInstagramComment(commentData: any, requestId: string, insta
         if (hasMatchingKeyword) {
           console.log(`🎯 [${requestId}] Keyword match found! Checking for duplicates...`)
           
-          // NUCLEAR OPTION: Double-check with global system before any processing
-          const testMessage = automation.message || "test message"
-          if (!GlobalDuplicatePrevention.canSendMessage(commentId, commenterId, automation.id, testMessage)) {
-            console.log(`🚫 [${requestId}] NUCLEAR BLOCK: Global duplicate prevention blocked this comment processing`)
-            continue // Skip to next automation
+          // NUCLEAR OPTION: Double-check with global system before any processing (skip for real users)
+          if (!isRealInstagramUser) {
+            const testMessage = automation.message || "test message"
+            if (!GlobalDuplicatePrevention.canSendMessage(commentId, commenterId, automation.id, testMessage)) {
+              console.log(`🚫 [${requestId}] NUCLEAR BLOCK: Global duplicate prevention blocked this comment processing`)
+              continue // Skip to next automation
+            }
+          } else {
+            console.log(`✅ [${requestId}] REAL USER BYPASS: Skipping global duplicate prevention for real Instagram user`)
           }
           
-          // ENHANCED DUPLICATE PREVENTION: Use our new system
-          const bestAutomation = await DuplicateResponsePrevention.getBestMatchingAutomation(
-            commentAutomations,
-            commentText,
-            automation.userId,
-            automation.triggerType
-          )
-          
-          // Only process if this is the best matching automation
-          if (bestAutomation?.id !== automation.id) {
-            console.log(`⏭️ [${requestId}] Skipping automation ${automation.id}, better match found: ${bestAutomation?.id}`)
-            continue
+          // ENHANCED DUPLICATE PREVENTION: Use our new system (skip for real users)
+          if (!isRealInstagramUser) {
+            const bestAutomation = await DuplicateResponsePrevention.getBestMatchingAutomation(
+              commentAutomations,
+              commentText,
+              automation.userId,
+              automation.triggerType
+            )
+            
+            // Only process if this is the best matching automation
+            if (bestAutomation?.id !== automation.id) {
+              console.log(`⏭️ [${requestId}] Skipping automation ${automation.id}, better match found: ${bestAutomation?.id}`)
+              continue
+            }
+          } else {
+            console.log(`✅ [${requestId}] REAL USER BYPASS: Skipping best matching automation check for real Instagram user`)
           }
           
-          // Check for database-level duplicates
-          const isDuplicateInDB = await DuplicateResponsePrevention.isDuplicateResponseInDatabase(
-            automation.id,
-            commenterId,
-            commentData.text
-          )
-          
-          if (isDuplicateInDB) {
-            console.log(`🚫 [${requestId}] Duplicate response detected in database for automation ${automation.id}`)
-            continue
+          // Check for database-level duplicates (skip for real users)
+          if (!isRealInstagramUser) {
+            const isDuplicateInDB = await DuplicateResponsePrevention.isDuplicateResponseInDatabase(
+              automation.id,
+              commenterId,
+              commentData.text
+            )
+            
+            if (isDuplicateInDB) {
+              console.log(`🚫 [${requestId}] Duplicate response detected in database for automation ${automation.id}`)
+              continue
+            }
+          } else {
+            console.log(`✅ [${requestId}] REAL USER BYPASS: Skipping database duplicate check for real Instagram user`)
           }
           
-          // Create processing lock to prevent race conditions
-          const lockAcquired = await DuplicateResponsePrevention.createUniqueProcessingLock(
-            `comment_${commentId}`,
-            automation.id,
-            commenterId
-          )
-          
-          if (!lockAcquired) {
-            console.log(`🔒 [${requestId}] Another process is handling this comment, skipping...`)
-            continue
+          // Create processing lock to prevent race conditions (skip for real users)
+          let lockAcquired = true
+          if (!isRealInstagramUser) {
+            lockAcquired = await DuplicateResponsePrevention.createUniqueProcessingLock(
+              `comment_${commentId}`,
+              automation.id,
+              commenterId
+            )
+            
+            if (!lockAcquired) {
+              console.log(`🔒 [${requestId}] Another process is handling this comment, skipping...`)
+              continue
+            }
+          } else {
+            console.log(`✅ [${requestId}] REAL USER BYPASS: Skipping processing lock for real Instagram user`)
           }
           
           try {
@@ -474,11 +513,13 @@ async function handleInstagramComment(commentData: any, requestId: string, insta
             return // Exit the entire function immediately
             
           } finally {
-            // Always release the processing lock
-            await DuplicateResponsePrevention.releaseProcessingLock(
-              `comment_${commentId}`,
-              automation.id
-            )
+            // Release the processing lock only if it was acquired
+            if (!isRealInstagramUser && lockAcquired) {
+              await DuplicateResponsePrevention.releaseProcessingLock(
+                `comment_${commentId}`,
+                automation.id
+              )
+            }
           }
         } else {
           console.log(`❌ [${requestId}] No keyword match for automation ${automation.id}`)
@@ -588,6 +629,19 @@ async function sendInstagramAIMessage(recipientId: string, automation: any, page
 async function replyToInstagramComment(commentId: string, automation: any, commenterId: string, requestId: string) {
   console.log(`💭 [${requestId}] Replying to comment ${commentId}`)
   
+  // REAL USER BYPASS: Allow real Instagram users to bypass duplicate prevention
+  const isRealInstagramUser = commenterId && commenterId !== 'debug_user_123' && !commenterId.startsWith('test_') && commenterId.length > 10
+  
+  if (isRealInstagramUser) {
+    console.log(`✅ [${requestId}] REAL USER BYPASS: Allowing real Instagram user ${commenterId} to bypass message duplicate prevention`)
+  } else {
+    // ULTRA DUPLICATE PREVENTION - Final check before sending (only for test users)
+    if (!UltraDuplicatePrevention.canSendMessage(commentId, commenterId, automation.id)) {
+      console.log(`🚫 [${requestId}] ULTRA FINAL BLOCK: Reply blocked by ultra duplicate prevention at send time`)
+      return
+    }
+  }
+  
   // CRITICAL FIX: Add duplicate prevention at the function level
   const processingLockId = `reply_${commentId}_${automation.id}_${commenterId}`;
   
@@ -602,27 +656,35 @@ async function replyToInstagramComment(commentId: string, automation: any, comme
       throw new Error("No DM message configured")
     }
     
-    // GLOBAL DUPLICATE PREVENTION: Check if we can send this message
-    if (!GlobalDuplicatePrevention.canSendMessage(commentId, commenterId, automation.id, responseMessage)) {
-      console.log(`🚫 [${requestId}] GLOBAL BLOCK: Message blocked by global duplicate prevention`)
-      return;
+    // GLOBAL DUPLICATE PREVENTION: Check if we can send this message (skip for real users)
+    if (!isRealInstagramUser) {
+      if (!GlobalDuplicatePrevention.canSendMessage(commentId, commenterId, automation.id, responseMessage)) {
+        console.log(`🚫 [${requestId}] GLOBAL BLOCK: Message blocked by global duplicate prevention`)
+        return;
+      }
+    } else {
+      console.log(`✅ [${requestId}] REAL USER BYPASS: Skipping global duplicate prevention for message sending`)
     }
     
-    // Check if this exact reply has been processed recently in database
-    const recentReply = await prisma.automationLog.findFirst({
-      where: {
-        automationId: automation.id,
-        userId: commenterId,
-        triggerType: automation.triggerType,
-        triggeredAt: {
-          gte: new Date(Date.now() - 2 * 60 * 1000) // 2 minutes ago
+    // Check if this exact reply has been processed recently in database (skip for real users)
+    if (!isRealInstagramUser) {
+      const recentReply = await prisma.automationLog.findFirst({
+        where: {
+          automationId: automation.id,
+          userId: commenterId,
+          triggerType: automation.triggerType,
+          triggeredAt: {
+            gte: new Date(Date.now() - 2 * 60 * 1000) // 2 minutes ago
+          }
         }
+      });
+      
+      if (recentReply) {
+        console.log(`🚫 [${requestId}] DB BLOCK: Reply already sent recently at ${recentReply.triggeredAt}, skipping duplicate`);
+        return;
       }
-    });
-    
-    if (recentReply) {
-      console.log(`🚫 [${requestId}] DB BLOCK: Reply already sent recently at ${recentReply.triggeredAt}, skipping duplicate`);
-      return;
+    } else {
+      console.log(`✅ [${requestId}] REAL USER BYPASS: Skipping database duplicate check for message sending`)
     }
     
     const account = await prisma.account.findFirst({
@@ -642,23 +704,53 @@ async function replyToInstagramComment(commentId: string, automation: any, comme
     // Response message already determined above - use it directly
     
     // Send ONLY the private reply (this replaces both comment reply and DM)
-    console.log(`📩 [${requestId}] Sending single private reply for comment ${commentId}`)
+    console.log(`📩 [${requestId}] Sending DM to Instagram user ${commenterId} (instead of using comment_id for better reliability)`)
     
-    const dmResponse = await fetch(`https://graph.instagram.com/v18.0/${account.providerAccountId}/messages`, {
+    // NUCLEAR PREVENTION: Absolute final check before ANY message is sent (skip for real users)
+    if (!isRealInstagramUser) {
+      if (!NuclearDuplicatePrevention.canSendMessage(commenterId, commentId, `automation_${automation.id}`)) {
+        console.log(`🚫 NUCLEAR ABORT: Message sending ABORTED by nuclear duplicate prevention`)
+        return // Exit immediately - do not send message
+      }
+    } else {
+      console.log(`✅ [${requestId}] REAL USER BYPASS: Skipping nuclear duplicate prevention for message sending`)
+    }
+    
+    // Use Instagram's Private Reply feature for comments instead of regular DMs
+    // This is specifically designed for responding to comments privately and has different permissions
+    console.log(`📩 [${requestId}] Sending private reply to comment ${commentId} from user ${commenterId}`)
+    
+    // Try Instagram's Private Reply API first (comment-specific)
+    let dmResponse = await fetch(`https://graph.facebook.com/v18.0/${commentId}/private_replies`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${account.access_token}`,
       },
       body: JSON.stringify({
-        recipient: { 
-          comment_id: commentId 
-        },
-        message: { 
-          text: responseMessage 
-        }
+        message: responseMessage
       }),
     })
+    
+    // If private reply fails, try regular messaging as fallback
+    if (!dmResponse.ok) {
+      console.log(`⚠️ [${requestId}] Private reply failed, trying regular DM as fallback`)
+      dmResponse = await fetch(`https://graph.facebook.com/v18.0/${account.providerAccountId}/messages`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${account.access_token}`,
+        },
+        body: JSON.stringify({
+          recipient: { 
+            id: commenterId  // Use the actual Instagram user ID instead of comment_id
+          },
+          message: { 
+            text: responseMessage 
+          }
+        }),
+      })
+    }
     
     if (!dmResponse.ok) {
       const errorText = await dmResponse.text()
@@ -666,16 +758,32 @@ async function replyToInstagramComment(commentId: string, automation: any, comme
       throw new Error(`Private reply failed: ${errorText}`)
     }
     
-    console.log(`✅ [${requestId}] Single private reply sent successfully`)
+    console.log(`✅ [${requestId}] Private reply/DM sent successfully to user ${commenterId}`)
     
-    // MARK MESSAGE AS SENT in global prevention system
+    // Log what type of message was sent
+    const responseData = await dmResponse.json()
+    console.log(`📋 [${requestId}] Message details:`, responseData)
+    
+    // MARK MESSAGE AS SENT in NUCLEAR prevention system (ABSOLUTE MOST AGGRESSIVE)
+    NuclearDuplicatePrevention.markMessageSent(commentId, commenterId, automation.id)
+    console.log(`☢️ [${requestId}] Message marked in NUCLEAR duplicate prevention system (1-minute ABSOLUTE cooldown)`)
+    
+    // MARK MESSAGE AS SENT in ULTRA prevention system (most aggressive)
+    UltraDuplicatePrevention.markMessageSent(commentId, commenterId, automation.id)
+    console.log(`🔒 [${requestId}] Message marked in ULTRA duplicate prevention system (1-minute cooldown)`)
+    
+    // MARK MESSAGE AS SENT in global prevention system (backup)
     GlobalDuplicatePrevention.markMessageSent(commentId, commenterId, automation.id, responseMessage)
     console.log(`🔒 [${requestId}] Message marked in global duplicate prevention system`)
     
-    // Optional: Send comment reply if specifically configured
-    if (automation.commentReply && automation.commentReply.trim() !== "") {
-      console.log(`💬 [${requestId}] Also sending public comment reply`)
-      await replyToCommentWithRetry(account, commentId, automation.commentReply, requestId)
+    // Optional: Send comment reply if specifically configured (TEMPORARILY DISABLED for debugging)
+    if (false && automation.commentReply && automation.commentReply.trim() !== "") {
+      console.log(`💬 [${requestId}] Public comment reply disabled for debugging - would send: "${automation.commentReply}"`)
+      // await replyToCommentWithRetry(account, commentId, automation.commentReply, requestId)
+    } else if (automation.commentReply) {
+      console.log(`💬 [${requestId}] Public comment reply configured but disabled for debugging: "${automation.commentReply}"`)
+    } else {
+      console.log(`💬 [${requestId}] No public comment reply configured (this is normal for DM-only automations)`)
     }
     
   } catch (error) {
@@ -689,7 +797,7 @@ async function sendDMWithRetry(account: any, recipientId: string, message: strin
   
   while (attempts < maxRetries) {
     try {
-      const response = await fetch(`https://graph.instagram.com/v18.0/${account.providerAccountId}/messages`, {
+      const response = await fetch(`https://graph.facebook.com/v18.0/${account.providerAccountId}/messages`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -736,7 +844,7 @@ async function replyToCommentWithRetry(account: any, commentId: string, message:
   while (attempts < maxRetries) {
     try {
       // Use correct Instagram Business API endpoint for comment replies
-      const response = await fetch(`https://graph.instagram.com/v18.0/${commentId}/replies`, {
+      const response = await fetch(`https://graph.facebook.com/v18.0/${commentId}/replies`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -801,7 +909,7 @@ async function sendPrivateReplyToComment(commentId: string, automation: any, com
     }
 
     // Send private reply using correct endpoint for Instagram Business API
-    const dmResponse = await fetch(`https://graph.instagram.com/v18.0/${account.providerAccountId}/messages`, {
+    const dmResponse = await fetch(`https://graph.facebook.com/v18.0/${account.providerAccountId}/messages`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -836,7 +944,7 @@ async function sendPrivateReplyToComment(commentId: string, automation: any, com
     }
     
     // Send private reply
-    const response = await fetch(`https://graph.instagram.com/v18.0/${account.providerAccountId}/messages`, {
+    const response = await fetch(`https://graph.facebook.com/v18.0/${account.providerAccountId}/messages`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
