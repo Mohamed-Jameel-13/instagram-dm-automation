@@ -18,49 +18,76 @@ export async function GET(req: NextRequest) {
   try {
     const redirectUri = `${new URL(req.url).origin}/auth/callback/instagram`
     
-    const tokenResponse = await fetch('https://api.instagram.com/oauth/access_token', {
-      method: 'POST',
+    // Exchange code for Facebook access token
+    const tokenResponse = await fetch('https://graph.facebook.com/v18.0/oauth/access_token', {
+      method: 'GET',
       headers: {
-        'Content-Type': 'application/x-www-form-urlencoded'
-      },
-      body: new URLSearchParams({
-        client_id: process.env.INSTAGRAM_CLIENT_ID!,
-        client_secret: process.env.INSTAGRAM_CLIENT_SECRET!,
-        grant_type: 'authorization_code',
-        redirect_uri: redirectUri,
-        code: code,
-      })
+        'Accept': 'application/json'
+      }
     })
 
-    if (!tokenResponse.ok) {
-        const errorData = await tokenResponse.json();
+    const tokenUrl = new URL('https://graph.facebook.com/v18.0/oauth/access_token')
+    tokenUrl.searchParams.set('client_id', process.env.INSTAGRAM_CLIENT_ID || process.env.FACEBOOK_APP_ID!)
+    tokenUrl.searchParams.set('client_secret', process.env.INSTAGRAM_CLIENT_SECRET || process.env.FACEBOOK_APP_SECRET!)
+    tokenUrl.searchParams.set('redirect_uri', redirectUri)
+    tokenUrl.searchParams.set('code', code)
+
+    const tokenFetch = await fetch(tokenUrl.toString())
+
+    if (!tokenFetch.ok) {
+        const errorData = await tokenFetch.text();
         console.error("Error getting access token:", errorData);
-        return NextResponse.redirect(new URL(`/integrations?error=${errorData.error_message}`, req.url));
+        return NextResponse.redirect(new URL(`/integrations?error=Token+exchange+failed`, req.url));
     }
 
-    const { access_token, user_id } = await tokenResponse.json()
+    const { access_token } = await tokenFetch.json()
 
-    const userResponse = await fetch(`https://graph.instagram.com/${user_id}?fields=id,username&access_token=${access_token}`)
-    const { username } = await userResponse.json()
+    // Get user's Facebook pages (which include Instagram Business accounts)
+    const pagesResponse = await fetch(`https://graph.facebook.com/v18.0/me/accounts?access_token=${access_token}`)
+    const pagesData = await pagesResponse.json()
+
+    // Find Instagram Business account
+    let instagramAccount = null
+    for (const page of pagesData.data || []) {
+      const igResponse = await fetch(`https://graph.facebook.com/v18.0/${page.id}?fields=instagram_business_account&access_token=${page.access_token}`)
+      const igData = await igResponse.json()
+      
+      if (igData.instagram_business_account) {
+        // Get Instagram account details
+        const igDetailsResponse = await fetch(`https://graph.facebook.com/v18.0/${igData.instagram_business_account.id}?fields=id,username&access_token=${page.access_token}`)
+        const igDetails = await igDetailsResponse.json()
+        
+        instagramAccount = {
+          id: igDetails.id,
+          username: igDetails.username,
+          access_token: page.access_token
+        }
+        break
+      }
+    }
+
+    if (!instagramAccount) {
+      return NextResponse.redirect(new URL('/integrations?error=No+Instagram+Business+account+found', req.url))
+    }
 
     await prisma.account.upsert({
       where: {
         provider_providerAccountId: {
           provider: 'instagram',
-          providerAccountId: user_id,
+          providerAccountId: instagramAccount.id,
         },
       },
       update: {
-        access_token: access_token,
+        access_token: instagramAccount.access_token,
       },
       create: {
         userId: userId,
         type: 'oauth',
         provider: 'instagram',
-        providerAccountId: user_id,
-        access_token: access_token,
+        providerAccountId: instagramAccount.id,
+        access_token: instagramAccount.access_token,
         token_type: 'bearer',
-        scope: 'user_profile,user_media,instagram_manage_comments,instagram_manage_messages',
+        scope: 'instagram_basic,instagram_manage_comments,instagram_manage_messages,pages_show_list,pages_read_engagement',
       },
     })
 
