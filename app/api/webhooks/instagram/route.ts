@@ -69,66 +69,67 @@ try {
   console.warn('Redis not configured for webhook queue, using fallback processing')
 }
 
-// Webhook signature validation using Web Crypto API (Edge Runtime compatible)
-async function validateInstagramSignature(body: string, signature: string | null): Promise<boolean> {
-  if (!signature) return false
-  
-  // Allow test signatures for development testing
-  if (signature === "sha256=test_signature_for_testing") {
-    console.log("⚠️ Using test signature bypass for development")
-    return true
-  }
-  
+// Helper function to validate Instagram webhook signature
+async function validateInstagramSignature(
+  body: string,
+  signature: string | null,
+  requestId: string
+): Promise<boolean> {
   const appSecret = process.env.INSTAGRAM_CLIENT_SECRET
-  if (!appSecret) return false
-  
-  try {
-    // Convert secret to Uint8Array
-    const secretKey = new TextEncoder().encode(appSecret)
-    const bodyData = new TextEncoder().encode(body)
-    
-    // Create HMAC key
-    const cryptoKey = await crypto.subtle.importKey(
-      'raw',
-      secretKey,
-      { name: 'HMAC', hash: 'SHA-256' },
-      false,
-      ['sign']
+
+  if (!signature || !appSecret) {
+    console.error(
+      `[${requestId}] Missing 'X-Hub-Signature-256' header or INSTAGRAM_CLIENT_SECRET. Cannot validate webhook.`
     )
-    
-    // Generate HMAC
-    const hmacBuffer = await crypto.subtle.sign('HMAC', cryptoKey, bodyData)
-    const hmacArray = Array.from(new Uint8Array(hmacBuffer))
-    const signatureHash = hmacArray.map(b => b.toString(16).padStart(2, '0')).join('')
-    
-  } catch (error) {
-    console.error('Error validating signature:', error)
     return false
   }
 
-  // Create a new hash using the app secret and the request body
-  const expectedHash = crypto
-    .createHmac('sha256', appSecret)
-    .update(body)
-    .digest('hex')
-    
-  // Securely compare the two hashes
-  let isValid = false;
-  try {
-    isValid = crypto.timingSafeEqual(Buffer.from(signatureHash, 'hex'), Buffer.from(expectedHash, 'hex'))
-  } catch (e) {
-    console.error(`[${requestId}] Error during signature comparison:`, e)
-    isValid = false
+  const signatureHash = signature.split("=")[1]
+  if (!signatureHash) {
+    console.error(
+      `[${requestId}] Invalid signature format. Expected 'sha256=...'`
+    )
+    return false
   }
-  
-  if (!isValid) {
+
+  try {
+    const encoder = new TextEncoder()
+    const keyData = encoder.encode(appSecret)
+    // The 'crypto' object is globally available in Vercel's Edge runtime
+    const cryptoKey = await crypto.subtle.importKey(
+      "raw",
+      keyData,
+      { name: "HMAC", hash: "SHA-256" },
+      false,
+      ["sign"]
+    )
+
+    const bodyData = encoder.encode(body)
+    const hmacBuffer = await crypto.subtle.sign("HMAC", cryptoKey, bodyData)
+    const hmacArray = Array.from(new Uint8Array(hmacBuffer))
+    const expectedHash = hmacArray
+      .map(b => b.toString(16).padStart(2, "0"))
+      .join("")
+
+    const isValid = signatureHash === expectedHash
+
+    if (!isValid) {
       console.error(`[${requestId}] Signature validation failed!`)
       console.log(`- Received hash:  ${signatureHash}`)
       console.log(`- Expected hash:  ${expectedHash}`)
-      console.log(`- Client Secret used (first 5 chars): ${appSecret.substring(0,5)}...`)
-  }
+      console.log(
+        `- Client Secret used (first 5 chars): ${appSecret.substring(0, 5)}...`
+      )
+    }
 
-  return isValid
+    return isValid
+  } catch (error) {
+    console.error(
+      `[${requestId}] Error during signature validation with Web Crypto API:`,
+      error
+    )
+    return false
+  }
 }
 
 export async function GET(req: NextRequest) {
@@ -168,7 +169,7 @@ export async function POST(req: NextRequest) {
     console.log(`🔍 [${requestId}] Debug: Has INSTAGRAM_ACCESS_TOKEN:`, !!process.env.INSTAGRAM_ACCESS_TOKEN)
     console.log(`🔍 [${requestId}] Debug: Has INSTAGRAM_CLIENT_SECRET:`, !!process.env.INSTAGRAM_CLIENT_SECRET)
     
-    if (!(await validateInstagramSignature(body, signature))) {
+    if (!(await validateInstagramSignature(body, signature, requestId))) {
       console.error(`❌ [${requestId}] Invalid signature`)
       return NextResponse.json({ error: "Invalid signature" }, { status: 401 })
     }
