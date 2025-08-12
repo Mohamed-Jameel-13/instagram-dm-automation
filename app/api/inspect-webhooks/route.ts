@@ -11,7 +11,7 @@ export async function GET(request: NextRequest) {
       take: 5
     })
     
-    const webhookDetails = []
+    const webhookDetails: any[] = []
     
     for (const webhook of recentWebhooks) {
       const detail: any = {

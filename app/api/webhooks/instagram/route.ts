@@ -149,11 +149,14 @@ export async function POST(req: NextRequest) {
     // 3. Generate unique event ID for deduplication based on content
     const parsedBody = JSON.parse(body)
     let eventId = `${requestId}_${Buffer.from(body).toString('base64').slice(0, 20)}`
-    
-    // Create more specific event ID for comments
-    if (parsedBody.entry?.[0]?.changes?.[0]?.value?.comment_id) {
-      const comment = parsedBody.entry[0].changes[0].value
-      eventId = `comment_${comment.comment_id}_${comment.from?.id || 'unknown'}`
+
+    // Create more specific event ID for comments (support both id and comment_id)
+    const maybeChangeValue = parsedBody.entry?.[0]?.changes?.[0]?.value
+    if (maybeChangeValue && (maybeChangeValue.id || maybeChangeValue.comment_id)) {
+      const commentId = maybeChangeValue.id || maybeChangeValue.comment_id
+      const fromId = maybeChangeValue.from?.id || 'unknown'
+      eventId = `comment_${commentId}_${fromId}`
+      console.log(`🧩 [${requestId}] Comment webhook detected. commentId=${commentId}, fromId=${fromId}`)
     }
     
     console.log(`🆔 [${requestId}] Generated event ID: ${eventId}`)
@@ -161,13 +164,18 @@ export async function POST(req: NextRequest) {
     // 4. Check if we've already processed this exact webhook (DATABASE-BASED DEDUPLICATION)
     const webhookStatus = await isWebhookAlreadyProcessed(eventId)
     if (webhookStatus.processed) {
-      console.log(`🚫 [${requestId}] Webhook already processed in database, returning cached result`)
-      return NextResponse.json({
-        success: true,
-        requestId,
-        cached: true,
-        result: webhookStatus.result
-      })
+      const cachedResult = webhookStatus.result || {}
+      if (cachedResult && (cachedResult.processingFailed || cachedResult.error)) {
+        console.log(`⚠️ [${requestId}] Previously processed with failure; reprocessing allowed for event ${eventId}`)
+      } else {
+        console.log(`🚫 [${requestId}] Webhook already processed in database, returning cached result`)
+        return NextResponse.json({
+          success: true,
+          requestId,
+          cached: true,
+          result: webhookStatus.result
+        })
+      }
     }
     
     // 5. Queue the event for background processing (non-blocking)
@@ -203,7 +211,7 @@ export async function POST(req: NextRequest) {
         const result = await processInstagramEvent(eventData)
         console.log(`✅ [${requestId}] Event processed inline in ${Date.now() - startTime}ms`)
         
-        // Mark webhook as processed in database
+        // Mark webhook as processed in database (upsert)
         await markWebhookAsProcessed(eventId, requestId, parsedBody, result)
         
         return NextResponse.json({ 
@@ -217,11 +225,7 @@ export async function POST(req: NextRequest) {
       } catch (processingError) {
         console.error(`💥 [${requestId}] Inline processing failed:`, processingError)
         
-        // Mark failed processing in database to prevent retrying the same failed event
-        const errorResult = { error: processingError instanceof Error ? processingError.message : "Processing failed" }
-        await markWebhookAsProcessed(eventId, requestId, parsedBody, errorResult)
-        
-        // Still return success to Instagram so they don't retry
+        // Do NOT mark as processed on failure to allow retry
         return NextResponse.json({ 
           success: true, 
           requestId,

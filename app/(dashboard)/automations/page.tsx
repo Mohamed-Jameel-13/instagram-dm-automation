@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { Plus, Zap } from "lucide-react"
+import { Plus, Zap, Trash2 } from "lucide-react"
 import { useFirebaseAuth } from "@/components/firebase-auth"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -12,6 +12,17 @@ import { Switch } from "@/components/ui/switch"
 import { format } from "date-fns"
 import { InstagramConnectionStatus } from "@/components/instagram-status"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog"
 
 interface InstagramAccount {
   id: string
@@ -41,6 +52,7 @@ export default function AutomationsPage() {
   const [isInstagramConnected, setIsInstagramConnected] = useState(false)
   const [connectedAccount, setConnectedAccount] = useState<InstagramAccount | null>(null)
   const [isLoading, setIsLoading] = useState(true)
+  const [deletingId, setDeletingId] = useState<string | null>(null)
 
   // Fetch user's automations
   useEffect(() => {
@@ -161,6 +173,25 @@ export default function AutomationsPage() {
     }
   }
 
+  const handleDeleteAutomation = async (id: string) => {
+    if (!user?.uid) return
+    try {
+      setDeletingId(id)
+      const response = await fetch(`/api/automations/${id}?userId=${user.uid}`, {
+        method: "DELETE",
+      })
+      if (response.ok) {
+        setAutomations((prev) => prev.filter((a) => a.id !== id))
+      } else {
+        console.error("Failed to delete automation", await response.text())
+      }
+    } catch (error) {
+      console.error("Error deleting automation:", error)
+    } finally {
+      setDeletingId(null)
+    }
+  }
+
   const handleConnectionSuccess = () => {
     // Refresh the Instagram connection status when user connects
     setIsInstagramConnected(true)
@@ -267,13 +298,35 @@ export default function AutomationsPage() {
                   <span className="text-sm text-muted-foreground italic">No keywords set</span>
                 )}
               </div>
-              <div className="mt-4">
+              <div className="mt-4 flex flex-wrap items-center gap-2">
                 <Link href={`/automations/${automation.id}`}>
                   <Button variant="outline" size="sm" disabled={!isInstagramConnected}>
                     <Zap className="mr-2 h-4 w-4" />
                     Edit Automation
                   </Button>
                 </Link>
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <Button variant="destructive" size="sm">
+                      <Trash2 className="mr-2 h-4 w-4" />
+                      Delete
+                    </Button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>Delete this automation?</AlertDialogTitle>
+                      <AlertDialogDescription>
+                        This action cannot be undone. This will permanently delete the automation and remove it from your account.
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>Cancel</AlertDialogCancel>
+                      <AlertDialogAction onClick={() => handleDeleteAutomation(automation.id)} disabled={deletingId === automation.id}>
+                        {deletingId === automation.id ? "Deleting..." : "Delete"}
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
               </div>
             </CardContent>
           </Card>

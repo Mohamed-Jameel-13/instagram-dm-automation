@@ -40,8 +40,11 @@ export async function POST(req: NextRequest) {
     
     console.log(`🧪 [${requestId}] Processing mock event:`, JSON.stringify(mockEvent, null, 2))
     
-    // Process the event directly (no queue)
+    // Temporarily disable duplicate prevention for this direct test to ensure a send
+    const prev = process.env.DUP_PREVENTION_DISABLED
+    process.env.DUP_PREVENTION_DISABLED = 'true'
     const result = await processInstagramEvent(mockEvent)
+    process.env.DUP_PREVENTION_DISABLED = prev
     
     console.log(`🧪 [${requestId}] Direct processing result:`, result)
     

@@ -6,6 +6,16 @@ export async function POST(req: NextRequest) {
   const requestId = `debug_${Date.now()}`
   
   try {
+    const body = await req.json().catch(() => ({}))
+    if (body?.action === 'disable-dedup') {
+      process.env.DUP_PREVENTION_DISABLED = 'true'
+      return NextResponse.json({ success: true, message: 'Duplicate prevention disabled' })
+    }
+    if (body?.action === 'enable-dedup') {
+      process.env.DUP_PREVENTION_DISABLED = 'false'
+      return NextResponse.json({ success: true, message: 'Duplicate prevention enabled' })
+    }
+
     console.log(`🔍 [${requestId}] Starting debug processing test...`)
     
     // First, let's check what automations exist

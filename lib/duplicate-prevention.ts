@@ -32,10 +32,11 @@ class DuplicateResponsePrevention {
    * Generate a unique event identifier based on the webhook content
    */
   static generateEventId(eventData: any): string {
-    if (eventData.entry?.[0]?.changes?.[0]?.value?.comment_id) {
-      // For comment events, use comment ID + text content
-      const comment = eventData.entry[0].changes[0].value
-      return `comment_${comment.comment_id}_${comment.text?.slice(0, 50) || ''}`
+    const changeValue = eventData.entry?.[0]?.changes?.[0]?.value
+    if (changeValue && (changeValue.comment_id || changeValue.id)) {
+      // For comment events, use comment ID (supports both id and comment_id) + text content
+      const commentId = changeValue.comment_id || changeValue.id
+      return `comment_${commentId}_${(changeValue.text || '').slice(0, 50)}`
     }
     
     if (eventData.entry?.[0]?.messaging?.[0]) {
@@ -234,7 +235,12 @@ class DuplicateResponsePrevention {
       return result
       
     } catch (error) {
-      this.markEventProcessed(eventId, 'error')
+      // Allow retry-on-error in debug mode
+      if (String(process.env.DEBUG_ALLOW_RETRY_ON_ERROR || '').toLowerCase() !== 'true') {
+        this.markEventProcessed(eventId, 'error')
+      } else {
+        console.log(`⚠️ [${requestId}] DEBUG mode: not marking event ${eventId} as processed after error`)
+      }
       console.error(`❌ [${requestId}] Event ${eventId} processing failed:`, error)
       throw error
     }

@@ -1,68 +1,62 @@
 import { type NextRequest, NextResponse } from "next/server"
 
+// Single route that posts a realistic IG webhook payload to our webhook handler.
+// Accepts optional overrides via request body.
 export async function POST(req: NextRequest) {
   try {
-    console.log(`🧪 Testing webhook with proper Instagram payload...`)
-    
-    // Create a proper Instagram webhook payload
+    const overrides = await req.json().catch(() => ({} as any))
+
+    const instagramAccountId = overrides.instagramAccountId || "24695355950081100"
+    const text = overrides.text || "hello"
+    const commenterId = overrides.commenterId || "test_user_123456"
+    const mediaId = overrides.mediaId || "test_post_789"
+
     const webhookPayload = {
       object: "instagram",
-      entry: [{
-        id: "24695355950081100", // Your Instagram account ID
-        time: Math.floor(Date.now() / 1000),
-        changes: [{
-          field: "comments",
-          value: {
-            id: `test_comment_${Date.now()}`,
-            text: "hello", // Test keyword that should match your automation
-            from: {
-              id: "test_user_123456",
-              username: "testuser"
+      entry: [
+        {
+          id: instagramAccountId,
+          time: Math.floor(Date.now() / 1000),
+          changes: [
+            {
+              field: "comments",
+              value: {
+                id: `test_comment_${Date.now()}`,
+                text,
+                from: { id: commenterId, username: "testuser" },
+                media: { id: mediaId, media_product_type: "FEED" },
+                created_time: new Date().toISOString(),
+                parent_id: null,
+              },
             },
-            media: {
-              id: "test_post_789",
-              media_product_type: "FEED"
-            },
-            created_time: new Date().toISOString(),
-            parent_id: null
-          }
-        }]
-      }]
+          ],
+        },
+      ],
     }
-    
-    console.log(`🧪 Webhook payload:`, JSON.stringify(webhookPayload, null, 2))
-    
-    // Send the payload to our webhook endpoint with a signature bypass
+
     const webhookUrl = `${req.nextUrl.origin}/api/webhooks/instagram`
-    
-    // Create a fake signature (since we're testing)
     const testSignature = "sha256=test_signature_for_testing"
-    
+
     const response = await fetch(webhookUrl, {
-      method: 'POST',
+      method: "POST",
       headers: {
-        'Content-Type': 'application/json',
-        'X-Hub-Signature-256': testSignature
+        "Content-Type": "application/json",
+        "X-Hub-Signature-256": testSignature,
       },
-      body: JSON.stringify(webhookPayload)
+      body: JSON.stringify(webhookPayload),
     })
-    
-    const result = await response.json()
-    
-    console.log(`🧪 Webhook response:`, result)
-    
+
+    const result = await response.json().catch(() => ({}))
+
     return NextResponse.json({
       success: true,
       webhookPayload,
       webhookResponse: result,
-      message: "Test webhook sent - check if it processed inline (since Redis may not be available)"
     })
-    
   } catch (error) {
-    console.error('❌ Test webhook failed:', error)
-    return NextResponse.json({ 
-      error: 'Test webhook failed', 
-      details: error instanceof Error ? error.message : 'Unknown error'
-    }, { status: 500 })
+    return NextResponse.json(
+      { success: false, error: error instanceof Error ? error.message : String(error) },
+      { status: 500 }
+    )
   }
-} 
+}

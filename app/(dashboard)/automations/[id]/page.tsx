@@ -5,7 +5,7 @@ import type React from "react"
 import { useState, useEffect } from "react"
 import { use } from "react"
 import Link from "next/link"
-import { ChevronRight, X, Plus } from "lucide-react"
+import { ChevronRight, X, Plus, Trash2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -16,6 +16,17 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Label } from "@/components/ui/label"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { FollowerSync } from "@/components/follower-sync"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog"
 import { useFirebaseAuth } from "@/components/firebase-auth"
 
 interface Automation {
@@ -59,6 +70,7 @@ export default function AutomationEditorPage({ params }: { params: Promise<{ id:
   const [instagramPosts, setInstagramPosts] = useState<InstagramPost[]>([])
   const [loadingPosts, setLoadingPosts] = useState(false)
   const [postsError, setPostsError] = useState("")
+  const [isDeleting, setIsDeleting] = useState(false)
 
   // Load automation data
   useEffect(() => {
@@ -335,6 +347,45 @@ export default function AutomationEditorPage({ params }: { params: Promise<{ id:
             <Button onClick={() => saveAutomation(automation)} disabled={isSaving}>
               Save Changes
             </Button>
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button variant="destructive" disabled={isDeleting}>
+                  <Trash2 className="mr-2 h-4 w-4" />
+                  {isDeleting ? "Deleting..." : "Delete"}
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Delete this automation?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    This action cannot be undone. This will permanently delete the automation and remove it from your account.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction
+                    onClick={async () => {
+                      if (!user?.uid) return
+                      try {
+                        setIsDeleting(true)
+                        const response = await fetch(`/api/automations/${id}?userId=${user.uid}`, { method: "DELETE" })
+                        if (response.ok) {
+                          window.location.href = "/automations"
+                        } else {
+                          console.error("Failed to delete automation", await response.text())
+                          setIsDeleting(false)
+                        }
+                      } catch (error) {
+                        console.error("Error deleting automation:", error)
+                        setIsDeleting(false)
+                      }
+                    }}
+                  >
+                    Confirm Delete
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
           </div>
         </div>
         

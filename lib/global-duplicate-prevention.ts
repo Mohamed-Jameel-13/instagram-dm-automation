@@ -2,8 +2,15 @@
 // This prevents ANY duplicate DMs from being sent
 
 const sentMessages = new Map<string, { timestamp: number, count: number }>()
-const MESSAGE_COOLDOWN = 30000 // 30 seconds cooldown between identical messages
-const MAX_MESSAGES_PER_USER = 1 // Maximum 1 message per user per trigger
+const MESSAGE_COOLDOWN = Number(process.env.DUP_PREVENTION_COOLDOWN_MS) || 30000
+const MAX_MESSAGES_PER_USER = 1
+
+function isDisabled(): boolean {
+  const envDisabled = String(process.env.DUP_PREVENTION_DISABLED || '').toLowerCase() === 'true'
+  const modeOff = String(process.env.DUP_PREVENTION_MODE || '').toLowerCase() === 'off'
+  const isDevDefaultOff = process.env.NODE_ENV !== 'production' && String(process.env.DUP_PREVENTION_DISABLED || '').toLowerCase() !== 'false'
+  return envDisabled || modeOff || isDevDefaultOff
+}
 
 // Clean up old entries every 2 minutes
 setInterval(() => {
@@ -18,6 +25,10 @@ setInterval(() => {
 class GlobalDuplicatePrevention {
   
   static canSendMessage(commentId: string, userId: string, automationId: string, messageText: string): boolean {
+    if (isDisabled()) {
+      console.log('⚠️ GLOBAL DUP PREVENTION DISABLED - allowing send')
+      return true
+    }
     // Create multiple keys to check different scenarios
     const keys = [
       `comment_${commentId}`, // Same comment
@@ -40,6 +51,10 @@ class GlobalDuplicatePrevention {
   }
   
   static markMessageSent(commentId: string, userId: string, automationId: string, messageText: string): void {
+    if (isDisabled()) {
+      console.log('⚠️ GLOBAL DUP PREVENTION DISABLED - not marking message sent')
+      return
+    }
     const keys = [
       `comment_${commentId}`,
       `user_${userId}_auto_${automationId}`,

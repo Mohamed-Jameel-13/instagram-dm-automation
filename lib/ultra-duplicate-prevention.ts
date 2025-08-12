@@ -2,7 +2,14 @@
 // This prevents ANY message from being sent twice within a specific timeframe
 
 const messageHistory = new Map<string, number>()
-const ABSOLUTE_COOLDOWN = 60000 // 1 minute absolute cooldown
+const ABSOLUTE_COOLDOWN = Number(process.env.DUP_PREVENTION_COOLDOWN_MS) || 60000 // default 1 minute
+
+function isDisabled(): boolean {
+  const envDisabled = String(process.env.DUP_PREVENTION_DISABLED || '').toLowerCase() === 'true'
+  const modeOff = String(process.env.DUP_PREVENTION_MODE || '').toLowerCase() === 'off'
+  const isDevDefaultOff = process.env.NODE_ENV !== 'production' && String(process.env.DUP_PREVENTION_DISABLED || '').toLowerCase() !== 'false'
+  return envDisabled || modeOff || isDevDefaultOff
+}
 
 // Auto-clear on module reload (development)
 if (typeof global !== 'undefined') {
@@ -25,6 +32,10 @@ setInterval(() => {
 class UltraDuplicatePrevention {
     
     static canSendMessage(commentId: string, userId: string, automationId: string): boolean {
+        if (isDisabled()) {
+            console.log('⚠️ ULTRA DUP PREVENTION DISABLED - allowing send')
+            return true
+        }
         // Create multiple keys to absolutely prevent any duplicates
         const keys = [
             `comment:${commentId}`,
@@ -51,6 +62,10 @@ class UltraDuplicatePrevention {
     }
     
     static markMessageSent(commentId: string, userId: string, automationId: string): void {
+        if (isDisabled()) {
+            console.log('⚠️ ULTRA DUP PREVENTION DISABLED - not marking message sent')
+            return
+        }
         const keys = [
             `comment:${commentId}`,
             `user:${userId}:automation:${automationId}`,

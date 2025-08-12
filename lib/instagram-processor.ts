@@ -103,9 +103,16 @@ export async function processInstagramEvent(eventData: any) {
             console.log(`💭 [${requestId}] Found ${entry.changes.length} comment events`)
             
             for (const change of entry.changes) {
-              if (change.field === "comments") {
-                await handleInstagramComment(change.value, requestId, instagramAccountId)
-              }
+           if (change.field === "comments") {
+             // Ensure we only process add events (not edits/deletes)
+             const value = change.value
+             const hasText = !!(value?.text || value?.message)
+             if (!hasText) {
+               console.log(`ℹ️ [${requestId}] Skipping non-text comment change event`)
+               continue
+             }
+             await handleInstagramComment(value, requestId, instagramAccountId)
+           }
             }
           }
         }
@@ -262,14 +269,26 @@ async function handleInstagramMessage(event: any, requestId: string, instagramAc
 }
 
 export async function handleInstagramComment(commentData: any, requestId: string, instagramAccountId: string) {
-  console.log(`💭 [${requestId}] Processing Instagram comment:`, commentData)
+  console.log(`💭 [${requestId}] Processing Instagram comment payload:`)
+  try {
+    console.log(JSON.stringify(commentData, null, 2))
+  } catch (_) {
+    console.log('[payload not serializable]')
+  }
   
-  if (commentData.text) {
-    const commentText = commentData.text.toLowerCase()
-    const commentId = commentData.id
+  if (!commentData || (!commentData.text && !commentData.message)) {
+    console.log(`❌ [${requestId}] Comment payload missing text. Keys: ${Object.keys(commentData || {}).join(', ')}`)
+    return
+  }
+
+  // Support both text and message fields just in case payload differs
+  const rawText = commentData.text || commentData.message
+  if (rawText) {
+    const commentText = String(rawText).toLowerCase()
+    const commentId = commentData.id || commentData.comment_id
     const commenterId = commentData.from?.id
     const commenterUsername = commentData.from?.username
-    const postId = commentData.media?.id
+    const postId = commentData.media?.id || commentData.media_id
     const parentId = commentData.parent_id
     
     // REAL USER BYPASS: Allow real Instagram users to bypass duplicate prevention
@@ -296,7 +315,7 @@ export async function handleInstagramComment(commentData: any, requestId: string
       const recentLog = await prisma.automationLog.findFirst({
         where: {
           userId: commenterId,
-          triggerText: commentData.text,
+          triggerText: rawText,
           triggeredAt: {
             gte: new Date(Date.now() - 5 * 60 * 1000) // 5 minutes ago
           }
@@ -366,7 +385,7 @@ export async function handleInstagramComment(commentData: any, requestId: string
           postsToCheck = []
         }
         
-        if (postsToCheck.length > 0 && !postsToCheck.includes(postId)) {
+        if (postsToCheck.length > 0 && postId && !postsToCheck.includes(postId)) {
           console.log(`❌ [${requestId}] Comment not on selected posts. Comment on ${postId}, automation configured for ${postsToCheck.join(', ')}`)
           continue
         }
@@ -423,7 +442,7 @@ export async function handleInstagramComment(commentData: any, requestId: string
             const isDuplicateInDB = await DuplicateResponsePrevention.isDuplicateResponseInDatabase(
               automation.id,
               commenterId,
-              commentData.text
+              rawText
             )
             
             if (isDuplicateInDB) {
@@ -452,7 +471,7 @@ export async function handleInstagramComment(commentData: any, requestId: string
           }
           
           try {
-            console.log(`🎯 [${requestId}] Processing automation ${automation.id} for comment`)
+            console.log(`🎯 [${requestId}] Processing automation ${automation.id} for commentId=${commentId} commenterId=${commenterId}`)
             
             // Handle Smart Follower Mode
             if (automation.dmMode === "smart_follower") {
@@ -500,9 +519,9 @@ export async function handleInstagramComment(commentData: any, requestId: string
               if (!isNewFollower) continue
               
               await followerTracker.markFollowerCommented(automation.userId, commenterId)
-              await logAutomationTrigger(automation.id, "follow_comment", commentData.text, commenterId, commenterUsername, true)
+              await logAutomationTrigger(automation.id, "follow_comment", rawText, commenterId, commenterUsername, true)
             } else {
-              await logAutomationTrigger(automation.id, "comment", commentData.text, commenterId, commenterUsername, false)
+              await logAutomationTrigger(automation.id, "comment", rawText, commenterId, commenterUsername, false)
             }
             
             await replyToInstagramComment(commentId, automation, commenterId, requestId)
@@ -526,6 +545,8 @@ export async function handleInstagramComment(commentData: any, requestId: string
         }
       }
       
+      // If we get here without returning, no automation matched; log that explicitly
+      console.log(`ℹ️ [${requestId}] No automation triggered for commentId=${commentId}. Reasons could be: account mismatch, missing scopes, keywords not matching, or post filter.`)
     } catch (error) {
       console.error(`💥 [${requestId}] Error handling Instagram comment:`, error)
       throw error
@@ -703,8 +724,7 @@ async function replyToInstagramComment(commentId: string, automation: any, comme
     
     // Response message already determined above - use it directly
     
-    // Send ONLY the private reply (this replaces both comment reply and DM)
-    console.log(`📩 [${requestId}] Sending DM to Instagram user ${commenterId} (instead of using comment_id for better reliability)`)
+    // Prefer Instagram Private Reply API. If it fails, fallback to regular DM endpoint.
     
     // NUCLEAR PREVENTION: Absolute final check before ANY message is sent (skip for real users)
     if (!isRealInstagramUser) {
@@ -776,14 +796,17 @@ async function replyToInstagramComment(commentId: string, automation: any, comme
     GlobalDuplicatePrevention.markMessageSent(commentId, commenterId, automation.id, responseMessage)
     console.log(`🔒 [${requestId}] Message marked in global duplicate prevention system`)
     
-    // Optional: Send comment reply if specifically configured (TEMPORARILY DISABLED for debugging)
-    if (false && automation.commentReply && automation.commentReply.trim() !== "") {
-      console.log(`💬 [${requestId}] Public comment reply disabled for debugging - would send: "${automation.commentReply}"`)
-      // await replyToCommentWithRetry(account, commentId, automation.commentReply, requestId)
-    } else if (automation.commentReply) {
-      console.log(`💬 [${requestId}] Public comment reply configured but disabled for debugging: "${automation.commentReply}"`)
+    // Optional: Send public comment reply if configured (in addition to private reply/DM)
+    if (automation.commentReply && automation.commentReply.trim() !== "") {
+      try {
+        console.log(`💬 [${requestId}] Sending public comment reply to ${commentId}`)
+        await replyToCommentWithRetry(account, commentId, automation.commentReply, requestId)
+        console.log(`✅ [${requestId}] Public comment reply sent successfully`)
+      } catch (replyError) {
+        console.error(`❌ [${requestId}] Failed to send public comment reply:`, replyError)
+      }
     } else {
-      console.log(`💬 [${requestId}] No public comment reply configured (this is normal for DM-only automations)`)
+      console.log(`💬 [${requestId}] No public comment reply configured (DM-only automation)`) 
     }
     
   } catch (error) {

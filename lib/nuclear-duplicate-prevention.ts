@@ -2,7 +2,14 @@
 // This prevents ANY Instagram message from being sent more than once per minute
 
 const sentMessagesGlobal = new Map<string, { count: number, lastSent: number, blocked: number }>()
-const NUCLEAR_COOLDOWN = 60000 // 1 minute absolute cooldown
+const NUCLEAR_COOLDOWN = Number(process.env.DUP_PREVENTION_COOLDOWN_MS) || 60000
+
+function isDisabled(): boolean {
+  const envDisabled = String(process.env.DUP_PREVENTION_DISABLED || '').toLowerCase() === 'true'
+  const modeOff = String(process.env.DUP_PREVENTION_MODE || '').toLowerCase() === 'off'
+  const isDevDefaultOff = process.env.NODE_ENV !== 'production' && String(process.env.DUP_PREVENTION_DISABLED || '').toLowerCase() !== 'false'
+  return envDisabled || modeOff || isDevDefaultOff
+}
 
 // Auto-cleanup every 2 minutes
 setInterval(() => {
@@ -18,6 +25,10 @@ class NuclearDuplicatePrevention {
     
     // Absolute prevention - creates MULTIPLE keys and blocks if ANY exist
     static canSendMessage(userId: string, messageOrCommentId: string, source: string = 'unknown'): boolean {
+        if (isDisabled()) {
+            console.log('⚠️ NUCLEAR DUP PREVENTION DISABLED - allowing send')
+            return true
+        }
         const now = Date.now()
         
         // Create super-aggressive keys
@@ -56,6 +67,10 @@ class NuclearDuplicatePrevention {
     
     // Mark message as sent with all keys
     static markMessageSent(userId: string, messageOrCommentId: string, source: string = 'unknown'): void {
+        if (isDisabled()) {
+            console.log('⚠️ NUCLEAR DUP PREVENTION DISABLED - not marking message sent')
+            return
+        }
         const now = Date.now()
         
         const keys = [

@@ -40,8 +40,15 @@ export async function POST(req: NextRequest) {
 
     console.log("✅ Basic validation passed, testing access token...")
 
-    // Verify the access token is valid using Basic Display API
-    const testResponse = await fetch(`https://graph.facebook.com/me?fields=id,username&access_token=${accessToken}`)
+    // Verify the access token: try Business API, then Basic Display API
+    let testResponse = await fetch(`https://graph.facebook.com/me?fields=id,username,account_type&access_token=${accessToken}`)
+    let isBusiness = false
+    if (!testResponse.ok) {
+      // Fallback to Basic Display API for tokens like IGQVJ... / IGA...
+      testResponse = await fetch(`https://graph.instagram.com/me?fields=id,username&access_token=${accessToken}`)
+    } else {
+      isBusiness = true
+    }
     
     if (!testResponse.ok) {
       console.error("❌ Instagram API validation failed:", testResponse.status, testResponse.statusText)
@@ -72,7 +79,9 @@ export async function POST(req: NextRequest) {
     console.log("🔄 Saving Instagram account connection...")
     
     // Detect token type and permissions
-    let detectedScope = "user_profile,user_media"
+    let detectedScope = isBusiness 
+      ? "instagram_manage_messages,instagram_manage_comments,user_profile,user_media" 
+      : "user_profile,user_media"
     try {
       // Test if this is a Business API token by checking business-specific endpoint
       const businessTestResponse = await fetch(
