@@ -108,7 +108,7 @@ export function InstagramConnection({ onConnectionSuccess, compact = false }: In
       
       // If Business API failed, try Basic Display API
       if (!response || !response.ok) {
-        response = await fetch(`https://graph.facebook.com/me?fields=id,username&access_token=${cleanToken}`)
+        response = await fetch(`https://graph.instagram.com/me?fields=id,username&access_token=${cleanToken}`)
         if (response.ok) {
           accountData = await response.json()
           tokenType = "basic_display"
@@ -340,8 +340,8 @@ export function InstagramConnection({ onConnectionSuccess, compact = false }: In
             </ul>
           </div>
           <div className="text-xs text-gray-500 mt-4 space-y-1">
-            <p>🔗 Webhook URL: https://instagram-automation-writesparkai.loca.lt/api/webhooks/instagram</p>
-            <p>🔐 Verify Token: verify_ig_webhook_2024_a7f3k9m2n8q1</p>
+            <p>🔗 Webhook URL: <code>{typeof window !== 'undefined' ? `${window.location.origin}/api/webhooks/instagram` : '/api/webhooks/instagram'}</code></p>
+            <p>🔐 Verify Token: set <code>INSTAGRAM_WEBHOOK_VERIFY_TOKEN</code> in your environment</p>
           </div>
         </CardContent>
       </Card>

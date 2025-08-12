@@ -75,7 +75,8 @@ async function validateInstagramSignature(
   body: string,
   signature: string | null
 ): Promise<boolean> {
-  const appSecret = process.env.INSTAGRAM_CLIENT_SECRET
+  // Accept either INSTAGRAM_CLIENT_SECRET or FACEBOOK_APP_SECRET for signature verification
+  const appSecret = process.env.INSTAGRAM_CLIENT_SECRET || process.env.FACEBOOK_APP_SECRET
 
   if (!signature || !appSecret) {
     return false
@@ -125,8 +126,8 @@ export async function POST(req: NextRequest) {
     
     // 2. Validate signature (fast check)
     console.log(
-      `🔍 [${requestId}] Debug: Has INSTAGRAM_CLIENT_SECRET:`,
-      !!process.env.INSTAGRAM_CLIENT_SECRET
+      `🔍 [${requestId}] Debug: Has webhook secret (INSTAGRAM_CLIENT_SECRET or FACEBOOK_APP_SECRET):`,
+      !!(process.env.INSTAGRAM_CLIENT_SECRET || process.env.FACEBOOK_APP_SECRET)
     )
 
     if (!(await validateInstagramSignature(body, signature))) {
