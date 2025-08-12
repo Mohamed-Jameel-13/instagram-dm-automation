@@ -7,15 +7,9 @@ export async function POST(req: NextRequest) {
   try {
     // Parse the request body first
     const body = await req.json()
-    const { accessToken, instagramId, username, accountType, userId: requestUserId } = body
+    const { accessToken, userId: requestUserId } = body
     
-    console.log("🔗 Instagram connect request:", { 
-      hasAccessToken: !!accessToken, 
-      instagramId, 
-      username, 
-      accountType,
-      requestUserId 
-    })
+    console.log("🔗 Instagram connect request:", { hasAccessToken: !!accessToken, requestUserId })
     
     // Prioritize user ID from request body (from Firebase Auth on client)
     let userId = requestUserId
@@ -29,13 +23,9 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    if (!accessToken || !instagramId || !username) {
-      console.error("❌ Missing required fields:", { 
-        hasAccessToken: !!accessToken, 
-        hasInstagramId: !!instagramId, 
-        hasUsername: !!username 
-      })
-      return NextResponse.json({ error: "Missing required fields" }, { status: 400 })
+    if (!accessToken) {
+      console.error("❌ Missing required accessToken")
+      return NextResponse.json({ error: "Missing access token" }, { status: 400 })
     }
 
     console.log("✅ Basic validation passed, testing access token...")
@@ -55,12 +45,40 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Invalid access token" }, { status: 400 })
     }
 
-    const accountData = await testResponse.json()
-    console.log("✅ Instagram API validation passed:", accountData)
+    const meData = await testResponse.json()
+    console.log("✅ Instagram API validation passed:", meData)
 
-    if (accountData.id !== instagramId) {
-      console.error("❌ Token doesn't match Instagram ID:", { provided: instagramId, actual: accountData.id })
-      return NextResponse.json({ error: "Token doesn't match provided Instagram ID" }, { status: 400 })
+    // Resolve the business Instagram account ID and username if available
+    // For Business tokens: traverse /me/accounts → instagram_business_account
+    let resolvedInstagramId = meData.id as string
+    let resolvedUsername = meData.username as string | undefined
+    let resolvedAccountType = isBusiness ? "BUSINESS" : "PERSONAL"
+
+    if (isBusiness) {
+      try {
+        const pagesResp = await fetch(`https://graph.facebook.com/v18.0/me/accounts?access_token=${accessToken}`)
+        if (pagesResp.ok) {
+          const pages = await pagesResp.json()
+          for (const page of pages.data || []) {
+            const igResp = await fetch(`https://graph.facebook.com/v18.0/${page.id}?fields=instagram_business_account&access_token=${page.access_token}`)
+            if (igResp.ok) {
+              const igData = await igResp.json()
+              if (igData.instagram_business_account?.id) {
+                resolvedInstagramId = igData.instagram_business_account.id
+                const igDetails = await fetch(`https://graph.facebook.com/v18.0/${resolvedInstagramId}?fields=id,username,account_type&access_token=${page.access_token}`)
+                if (igDetails.ok) {
+                  const details = await igDetails.json()
+                  resolvedUsername = details.username
+                  resolvedAccountType = details.account_type || "BUSINESS"
+                }
+                break
+              }
+            }
+          }
+        }
+      } catch (e) {
+        console.warn("⚠️ Could not resolve business instagram account via pages traversal")
+      }
     }
 
     console.log("🔄 Ensuring user exists in database...")
@@ -85,7 +103,7 @@ export async function POST(req: NextRequest) {
     try {
       // Test if this is a Business API token by checking business-specific endpoint
       const businessTestResponse = await fetch(
-        `https://graph.facebook.com/v18.0/${instagramId}?fields=id,username,account_type&access_token=${accessToken}`
+        `https://graph.facebook.com/v18.0/${resolvedInstagramId}?fields=id,username,account_type&access_token=${accessToken}`
       )
       
       if (businessTestResponse.ok) {
@@ -98,7 +116,7 @@ export async function POST(req: NextRequest) {
       
       // Additional test: Try to access conversations endpoint (requires messaging permission)
       const conversationTestResponse = await fetch(
-        `https://graph.facebook.com/v18.0/${instagramId}/conversations?access_token=${accessToken}`
+        `https://graph.facebook.com/v18.0/${resolvedInstagramId}/conversations?access_token=${accessToken}`
       )
       
       if (conversationTestResponse.ok) {
@@ -118,7 +136,7 @@ export async function POST(req: NextRequest) {
         where: {
           provider_providerAccountId: {
             provider: "instagram",
-            providerAccountId: instagramId,
+            providerAccountId: resolvedInstagramId,
           },
         },
         update: {
@@ -131,7 +149,7 @@ export async function POST(req: NextRequest) {
           userId: userId,
           type: "oauth",
           provider: "instagram",
-          providerAccountId: instagramId,
+          providerAccountId: resolvedInstagramId,
           access_token: accessToken,
           token_type: "bearer",
           scope: detectedScope,
@@ -147,9 +165,9 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({
         success: true,
         account: {
-          id: instagramId,
-          username: username,
-          accountType: accountType,
+          id: resolvedInstagramId,
+          username: resolvedUsername || meData.username,
+          accountType: resolvedAccountType,
         },
       })
     } catch (accountError) {

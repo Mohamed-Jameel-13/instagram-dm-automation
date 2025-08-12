@@ -354,18 +354,18 @@ export async function handleInstagramComment(commentData: any, requestId: string
           continue
         }
         
-        // Check if business account
+        // CRITICAL FIX: Check if this Instagram account is the one receiving the webhook event (check match first)
+        if (userInstagramAccount.providerAccountId !== instagramAccountId) {
+          console.log(`❌ [${requestId}] Instagram account mismatch: automation owner has ${userInstagramAccount.providerAccountId}, webhook is for ${instagramAccountId}`)
+          continue
+        }
+
+        // Check if business account (after confirming match for clearer diagnostics)
         const isBusinessAccount = userInstagramAccount.scope?.includes("instagram_manage_messages") || 
                                   userInstagramAccount.scope?.includes("instagram_manage_comments")
         
         if (!isBusinessAccount) {
           console.log(`❌ [${requestId}] Instagram account ${userInstagramAccount.providerAccountId} doesn't have business permissions`)
-          continue
-        }
-        
-        // CRITICAL FIX: Check if this Instagram account is the one receiving the webhook event
-        if (userInstagramAccount.providerAccountId !== instagramAccountId) {
-          console.log(`❌ [${requestId}] Instagram account mismatch: automation owner has ${userInstagramAccount.providerAccountId}, webhook is for ${instagramAccountId}`)
           continue
         }
         
