@@ -132,6 +132,12 @@ export async function POST(req: NextRequest) {
     const body = await req.text()
     const signature = req.headers.get('X-Hub-Signature-256')
     
+    // Enhanced logging to capture more details
+    console.log(`[${requestId}] Received webhook request:`, {
+      headers: Object.fromEntries(req.headers.entries()),
+      body,
+    })
+    
     console.log(`🔐 [${requestId}] Validating Instagram webhook signature...`)
     
     // 2. Validate signature (fast check)
