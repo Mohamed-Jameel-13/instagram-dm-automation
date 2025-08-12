@@ -3,12 +3,12 @@
 import { useState, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card'
-import { useAuth } from '@/components/firebase-auth'
+import { useFirebaseAuth } from '@/components/firebase-auth'
 
 export default function IntegrationsPage() {
   const [instagramAccount, setInstagramAccount] = useState(null)
   const [isLoading, setIsLoading] = useState(true)
-  const { user } = useAuth()
+  const { user } = useFirebaseAuth()
 
   useEffect(() => {
     if (user) {
@@ -24,10 +24,7 @@ export default function IntegrationsPage() {
   }, [user])
 
   const handleConnect = () => {
-    const redirectUri = `${window.location.origin}/auth/callback/instagram`
-    const scope = "user_profile,user_media,instagram_manage_comments,instagram_manage_messages"
-    const authUrl = `https://api.instagram.com/oauth/authorize?client_id=${process.env.NEXT_PUBLIC_INSTAGRAM_APP_ID}&redirect_uri=${redirectUri}&scope=${scope}&response_type=code`
-    window.location.href = authUrl
+    window.location.href = "/api/auth/instagram/start"
   }
 
   const handleDisconnect = async () => {

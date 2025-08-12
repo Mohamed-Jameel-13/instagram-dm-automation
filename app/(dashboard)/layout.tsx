@@ -3,7 +3,7 @@
 import type React from "react"
 import { AppSidebar } from "@/components/app-sidebar"
 import { Header } from "@/components/header"
-import { AuthProvider } from "@/components/firebase-auth"
+import { FirebaseAuthProvider } from "@/components/firebase-auth"
 
 export default function DashboardLayout({
   children,
@@ -11,7 +11,7 @@ export default function DashboardLayout({
   children: React.ReactNode
 }) {
   return (
-    <AuthProvider>
+    <FirebaseAuthProvider>
       <div className="flex min-h-screen w-full flex-col bg-muted/40">
         <AppSidebar />
         <div className="flex flex-col sm:gap-4 sm:py-4 sm:pl-14">
@@ -21,6 +21,6 @@ export default function DashboardLayout({
           </main>
         </div>
       </div>
-    </AuthProvider>
+    </FirebaseAuthProvider>
   )
 }
