@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server"
 
 export async function GET(req: NextRequest) {
-  const clientId = process.env.INSTAGRAM_CLIENT_ID || process.env.FACEBOOK_APP_ID
+  // Prefer Facebook App ID for Instagram Graph (Business) OAuth
+  const clientId = process.env.FACEBOOK_APP_ID || process.env.INSTAGRAM_CLIENT_ID
   const redirectUri = `${new URL(req.url).origin}/auth/callback/instagram`
   // Use Facebook Login for Instagram Business API permissions
   const scope = "instagram_basic,instagram_manage_comments,instagram_manage_messages,pages_show_list,pages_read_engagement"
