@@ -1,35 +1,28 @@
-import { NextResponse } from "next/server"
+﻿import { NextRequest, NextResponse } from "next/server";
 
-export async function GET() {
-  try {
-    const envCheck = {
-      hasInstagramClientSecret: !!process.env.INSTAGRAM_CLIENT_SECRET,
-      hasWebhookVerifyToken: !!process.env.INSTAGRAM_WEBHOOK_VERIFY_TOKEN,
-      hasAccessToken: !!process.env.INSTAGRAM_ACCESS_TOKEN,
-      hasDatabaseUrl: !!process.env.DATABASE_URL,
-      hasBusinessAccountId: !!process.env.INSTAGRAM_BUSINESS_ACCOUNT_ID,
-      clientSecretLength: process.env.INSTAGRAM_CLIENT_SECRET?.length || 0,
-      verifyTokenLength: process.env.INSTAGRAM_WEBHOOK_VERIFY_TOKEN?.length || 0,
-      accessTokenLength: process.env.INSTAGRAM_ACCESS_TOKEN?.length || 0,
-      businessAccountId: process.env.INSTAGRAM_BUSINESS_ACCOUNT_ID || 'NOT_SET',
-      // Show first 20 chars for debugging (safe)
-      clientSecretPrefix: process.env.INSTAGRAM_CLIENT_SECRET?.substring(0, 20) || 'NOT_SET',
-      verifyTokenPrefix: process.env.INSTAGRAM_WEBHOOK_VERIFY_TOKEN?.substring(0, 20) || 'NOT_SET',
-      accessTokenPrefix: process.env.INSTAGRAM_ACCESS_TOKEN?.substring(0, 20) || 'NOT_SET',
-      // Show all environment variables starting with INSTAGRAM (for debugging)
-      allInstagramEnvs: Object.keys(process.env).filter(key => key.startsWith('INSTAGRAM'))
-    }
-
-    return NextResponse.json({
-      success: true,
-      environment: envCheck,
-      timestamp: new Date().toISOString()
-    })
-  } catch (error) {
-    return NextResponse.json({
-      success: false,
-      error: error instanceof Error ? error.message : 'Unknown error',
-      timestamp: new Date().toISOString()
-    }, { status: 500 })
-  }
+export async function GET(req: NextRequest) {
+  // Create a test URL to see what's happening
+  const testAuthUrl = new URL("https://www.facebook.com/v18.0/dialog/oauth");
+  
+  // Force use Facebook App ID directly
+  const facebookAppId = process.env.FACEBOOK_APP_ID;
+  testAuthUrl.searchParams.set("client_id", facebookAppId || "MISSING");
+  testAuthUrl.searchParams.set("redirect_uri", `${new URL(req.url).origin}/auth/callback/instagram`);
+  testAuthUrl.searchParams.set("scope", "instagram_basic,instagram_manage_comments");
+  testAuthUrl.searchParams.set("response_type", "code");
+  
+  // Debug info
+  const envVars = {
+    INSTAGRAM_CLIENT_ID: process.env.INSTAGRAM_CLIENT_ID,
+    FACEBOOK_APP_ID: process.env.FACEBOOK_APP_ID,
+    INSTAGRAM_CLIENT_SECRET_EXISTS: !!process.env.INSTAGRAM_CLIENT_SECRET,
+    FACEBOOK_APP_SECRET_EXISTS: !!process.env.FACEBOOK_APP_SECRET,
+  };
+  
+  return NextResponse.json({
+    envVars,
+    generatedUrl: testAuthUrl.toString(),
+    directLink: testAuthUrl.toString(),
+    instructions: "Click the directLink to test OAuth with the Facebook App ID directly"
+  });
 }

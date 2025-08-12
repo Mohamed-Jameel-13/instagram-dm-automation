@@ -27,9 +27,11 @@ export async function GET(req: NextRequest) {
     })
 
     const tokenUrl = new URL('https://graph.facebook.com/v18.0/oauth/access_token')
-    // Prefer Facebook App credentials for IG Graph OAuth
-    tokenUrl.searchParams.set('client_id', process.env.FACEBOOK_APP_ID || process.env.INSTAGRAM_CLIENT_ID!)
-    tokenUrl.searchParams.set('client_secret', process.env.FACEBOOK_APP_SECRET || process.env.INSTAGRAM_CLIENT_SECRET!)
+    // IMPORTANT: ALWAYS use Facebook App credentials for IG Graph OAuth token exchange
+    tokenUrl.searchParams.set('client_id', process.env.FACEBOOK_APP_ID!)
+    tokenUrl.searchParams.set('client_secret', process.env.FACEBOOK_APP_SECRET!)
+    
+    console.log(`Using Facebook App credentials for token exchange. App ID: ${process.env.FACEBOOK_APP_ID?.substring(0, 5)}...`)
     tokenUrl.searchParams.set('redirect_uri', redirectUri)
     tokenUrl.searchParams.set('code', code)
 
