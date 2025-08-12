@@ -1,5 +1,13 @@
 import { type NextRequest, NextResponse } from "next/server"
 
+export async function GET(req: NextRequest) {
+  return NextResponse.json({
+    message: "Use POST to test your token",
+    usage: "POST with JSON body: {\"accessToken\": \"your_token_here\"}",
+    example: "curl -X POST -H 'Content-Type: application/json' -d '{\"accessToken\":\"IGAAR...\"}' /api/identify-accounts"
+  })
+}
+
 export async function POST(req: NextRequest) {
   try {
     const { accessToken } = await req.json()

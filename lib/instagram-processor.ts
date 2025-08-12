@@ -354,9 +354,13 @@ export async function handleInstagramComment(commentData: any, requestId: string
           continue
         }
         
-        // CRITICAL FIX: Check if this Instagram account is the one receiving the webhook event (check match first)
-        if (userInstagramAccount.providerAccountId !== instagramAccountId) {
+        // CRITICAL FIX: Check if this Instagram account is the one receiving the webhook event
+        // Note: Same Instagram account can have different IDs (User ID vs Business ID)
+        const isAccountMatch = userInstagramAccount.providerAccountId === instagramAccountId
+        
+        if (!isAccountMatch) {
           console.log(`❌ [${requestId}] Instagram account mismatch: automation owner has ${userInstagramAccount.providerAccountId}, webhook is for ${instagramAccountId}`)
+          console.log(`ℹ️ [${requestId}] Note: Same Instagram account can have different IDs (User ID vs Business ID). If this is the same account, you may need to update the stored ID.`)
           continue
         }
 
