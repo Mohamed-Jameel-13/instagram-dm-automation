@@ -1,44 +1,68 @@
 "use client"
 
-import { Cloud } from "lucide-react"
-import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
-import { InstagramConnectionStatus } from "@/components/instagram-status"
+import { useState, useEffect } from 'react'
+import { Button } from '@/components/ui/button'
+import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card'
+import { useAuth } from '@/components/firebase-auth'
 
 export default function IntegrationsPage() {
+  const [instagramAccount, setInstagramAccount] = useState(null)
+  const [isLoading, setIsLoading] = useState(true)
+  const { user } = useAuth()
+
+  useEffect(() => {
+    if (user) {
+      fetch(`/api/accounts/${user.uid}/instagram`)
+        .then(res => res.json())
+        .then(data => {
+          if (data.account) {
+            setInstagramAccount(data.account)
+          }
+          setIsLoading(false)
+        })
+    }
+  }, [user])
+
+  const handleConnect = () => {
+    const redirectUri = `${window.location.origin}/auth/callback/instagram`
+    const scope = "user_profile,user_media,instagram_manage_comments,instagram_manage_messages"
+    const authUrl = `https://api.instagram.com/oauth/authorize?client_id=${process.env.NEXT_PUBLIC_INSTAGRAM_APP_ID}&redirect_uri=${redirectUri}&scope=${scope}&response_type=code`
+    window.location.href = authUrl
+  }
+
+  const handleDisconnect = async () => {
+    if (!user) return
+    await fetch(`/api/instagram/connect?userId=${user.uid}`, { method: 'DELETE' })
+    setInstagramAccount(null)
+  }
+
   return (
-    <div className="space-y-8">
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight">Integrations</h1>
-        <p className="text-muted-foreground mt-2">Connect your accounts to enable automations</p>
-      </div>
-
-      <div className="grid gap-6 md:grid-cols-2">
-        <InstagramConnectionStatus showCard />
-
-        <Card>
-          <CardHeader>
-            <div className="flex items-center space-x-4">
-              <div className="rounded-full bg-primary/10 p-3">
-                <Cloud className="h-6 w-6 text-primary" />
-              </div>
-              <div>
-                <CardTitle>Salesforce</CardTitle>
-                <CardDescription>Connect Salesforce to sync customer data</CardDescription>
-              </div>
+    <div className="flex-1 space-y-4 p-4 md:p-8 pt-6">
+      <h2 className="text-3xl font-bold tracking-tight">Integrations</h2>
+      <Card>
+        <CardHeader>
+          <CardTitle>Instagram</CardTitle>
+          <CardDescription>Connect your Instagram account to start automating your comments and DMs.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {isLoading ? (
+            <p>Loading...</p>
+          ) : instagramAccount ? (
+            <div>
+              <p>Connected as: <strong>{instagramAccount.username}</strong></p>
             </div>
-          </CardHeader>
-          <CardContent>
-            <p className="text-sm text-muted-foreground">
-              Connecting Salesforce allows you to automatically sync customer data from Instagram interactions to your
-              CRM.
-            </p>
-          </CardContent>
-          <CardFooter>
-            <Button>Connect Salesforce</Button>
-          </CardFooter>
-        </Card>
-      </div>
+          ) : (
+            <p>No Instagram account connected.</p>
+          )}
+        </CardContent>
+        <CardFooter>
+          {instagramAccount ? (
+            <Button onClick={handleDisconnect} variant="destructive">Disconnect</Button>
+          ) : (
+            <Button onClick={handleConnect}>Connect Instagram</Button>
+          )}
+        </CardFooter>
+      </Card>
     </div>
   )
 }

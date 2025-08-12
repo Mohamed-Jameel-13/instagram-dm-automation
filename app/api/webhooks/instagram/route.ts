@@ -1,4 +1,5 @@
-import { type NextRequest, NextResponse } from "next/server"
+import { NextResponse, NextRequest } from "next/server"
+import crypto from "crypto"
 
 // Force Node.js runtime for Prisma compatibility (fixes database issues)
 export const runtime = 'nodejs'
@@ -72,64 +73,22 @@ try {
 // Helper function to validate Instagram webhook signature
 async function validateInstagramSignature(
   body: string,
-  signature: string | null,
-  requestId: string
+  signature: string | null
 ): Promise<boolean> {
   const appSecret = process.env.INSTAGRAM_CLIENT_SECRET
 
   if (!signature || !appSecret) {
-    console.error(
-      `[${requestId}] Missing 'X-Hub-Signature-256' header or INSTAGRAM_CLIENT_SECRET. Cannot validate webhook.`
-    )
     return false
   }
-
+  
   const signatureHash = signature.split("=")[1]
-  if (!signatureHash) {
-    console.error(
-      `[${requestId}] Invalid signature format. Expected 'sha256=...'`
-    )
-    return false
-  }
+  
+  const expectedHash = crypto
+    .createHmac("sha256", appSecret)
+    .update(body)
+    .digest("hex")
 
-  try {
-    const encoder = new TextEncoder()
-    const keyData = encoder.encode(appSecret)
-    // The 'crypto' object is globally available in Vercel's Edge runtime
-    const cryptoKey = await crypto.subtle.importKey(
-      "raw",
-      keyData,
-      { name: "HMAC", hash: "SHA-256" },
-      false,
-      ["sign"]
-    )
-
-    const bodyData = encoder.encode(body)
-    const hmacBuffer = await crypto.subtle.sign("HMAC", cryptoKey, bodyData)
-    const hmacArray = Array.from(new Uint8Array(hmacBuffer))
-    const expectedHash = hmacArray
-      .map(b => b.toString(16).padStart(2, "0"))
-      .join("")
-
-    const isValid = signatureHash === expectedHash
-
-    if (!isValid) {
-      console.error(`[${requestId}] Signature validation failed!`)
-      console.log(`- Received hash:  ${signatureHash}`)
-      console.log(`- Expected hash:  ${expectedHash}`)
-      console.log(
-        `- Client Secret used (first 5 chars): ${appSecret.substring(0, 5)}...`
-      )
-    }
-
-    return isValid
-  } catch (error) {
-    console.error(
-      `[${requestId}] Error during signature validation with Web Crypto API:`,
-      error
-    )
-    return false
-  }
+  return crypto.timingSafeEqual(Buffer.from(signatureHash, 'hex'), Buffer.from(expectedHash, 'hex'))
 }
 
 export async function GET(req: NextRequest) {
@@ -154,7 +113,7 @@ export async function POST(req: NextRequest) {
   try {
     // 1. Get body and signature
     const body = await req.text()
-    const signature = req.headers.get('X-Hub-Signature-256')
+    const signature = req.headers.get("X-Hub-Signature-256")
     
     // Enhanced logging to capture more details
     console.log(`[${requestId}] Received webhook request:`, {
@@ -165,11 +124,12 @@ export async function POST(req: NextRequest) {
     console.log(`🔐 [${requestId}] Validating Instagram webhook signature...`)
     
     // 2. Validate signature (fast check)
-    console.log(`🔍 [${requestId}] Debug: Available Instagram env vars:`, Object.keys(process.env).filter(k => k.startsWith('INSTAGRAM')))
-    console.log(`🔍 [${requestId}] Debug: Has INSTAGRAM_ACCESS_TOKEN:`, !!process.env.INSTAGRAM_ACCESS_TOKEN)
-    console.log(`🔍 [${requestId}] Debug: Has INSTAGRAM_CLIENT_SECRET:`, !!process.env.INSTAGRAM_CLIENT_SECRET)
-    
-    if (!(await validateInstagramSignature(body, signature, requestId))) {
+    console.log(
+      `🔍 [${requestId}] Debug: Has INSTAGRAM_CLIENT_SECRET:`,
+      !!process.env.INSTAGRAM_CLIENT_SECRET
+    )
+
+    if (!(await validateInstagramSignature(body, signature))) {
       console.error(`❌ [${requestId}] Invalid signature`)
       return NextResponse.json({ error: "Invalid signature" }, { status: 401 })
     }
