@@ -99,13 +99,36 @@ async function validateInstagramSignature(body: string, signature: string | null
     // Generate HMAC
     const hmacBuffer = await crypto.subtle.sign('HMAC', cryptoKey, bodyData)
     const hmacArray = Array.from(new Uint8Array(hmacBuffer))
-    const expectedSignature = hmacArray.map(b => b.toString(16).padStart(2, '0')).join('')
+    const signatureHash = hmacArray.map(b => b.toString(16).padStart(2, '0')).join('')
     
-    return `sha256=${expectedSignature}` === signature
   } catch (error) {
     console.error('Error validating signature:', error)
     return false
   }
+
+  // Create a new hash using the app secret and the request body
+  const expectedHash = crypto
+    .createHmac('sha256', appSecret)
+    .update(body)
+    .digest('hex')
+    
+  // Securely compare the two hashes
+  let isValid = false;
+  try {
+    isValid = crypto.timingSafeEqual(Buffer.from(signatureHash, 'hex'), Buffer.from(expectedHash, 'hex'))
+  } catch (e) {
+    console.error(`[${requestId}] Error during signature comparison:`, e)
+    isValid = false
+  }
+  
+  if (!isValid) {
+      console.error(`[${requestId}] Signature validation failed!`)
+      console.log(`- Received hash:  ${signatureHash}`)
+      console.log(`- Expected hash:  ${expectedHash}`)
+      console.log(`- Client Secret used (first 5 chars): ${appSecret.substring(0,5)}...`)
+  }
+
+  return isValid
 }
 
 export async function GET(req: NextRequest) {
