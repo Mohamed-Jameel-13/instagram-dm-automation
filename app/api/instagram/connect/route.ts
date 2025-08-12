@@ -84,7 +84,7 @@ export async function POST(req: NextRequest) {
     console.log("🔄 Ensuring user exists in database...")
     // Ensure the user exists in our database first
     try {
-      await ensureUserExists(userId, username)
+      await ensureUserExists(userId, resolvedUsername)
       console.log("✅ User exists/created successfully")
     } catch (userError) {
       console.error("❌ Error ensuring user exists:", userError)
@@ -96,12 +96,45 @@ export async function POST(req: NextRequest) {
 
     console.log("🔄 Saving Instagram account connection...")
     
-    // Detect token type and permissions
-    let detectedScope = isBusiness 
-      ? "instagram_manage_messages,instagram_manage_comments,user_profile,user_media" 
-      : "user_profile,user_media"
+    // Detect actual token capabilities by testing endpoints
+    console.log("🔍 Testing token capabilities...")
+    let detectedCapabilities = ["user_profile", "user_media"]
+    
     try {
-      // Test if this is a Business API token by checking business-specific endpoint
+      // Test messaging capability
+      const conversationTestResponse = await fetch(
+        `https://graph.facebook.com/v18.0/${resolvedInstagramId}/conversations?access_token=${accessToken}`
+      )
+      
+      if (conversationTestResponse.ok) {
+        console.log("✅ Token can access conversations - has messaging capability")
+        detectedCapabilities.push("instagram_manage_messages")
+      } else {
+        console.log("❌ Token cannot access conversations - no messaging capability")
+      }
+      
+      // Test commenting capability (try to get media comments)
+      const mediaTestResponse = await fetch(
+        `https://graph.facebook.com/v18.0/${resolvedInstagramId}/media?fields=id&limit=1&access_token=${accessToken}`
+      )
+      
+      if (mediaTestResponse.ok) {
+        const mediaData = await mediaTestResponse.json()
+        if (mediaData.data?.[0]?.id) {
+          const commentsTestResponse = await fetch(
+            `https://graph.facebook.com/v18.0/${mediaData.data[0].id}/comments?access_token=${accessToken}`
+          )
+          
+          if (commentsTestResponse.ok) {
+            console.log("✅ Token can access media comments - has commenting capability")
+            detectedCapabilities.push("instagram_manage_comments")
+          } else {
+            console.log("❌ Token cannot access media comments - no commenting capability")
+          }
+        }
+      }
+      
+      // Test business account verification
       const businessTestResponse = await fetch(
         `https://graph.facebook.com/v18.0/${resolvedInstagramId}?fields=id,username,account_type&access_token=${accessToken}`
       )
@@ -109,26 +142,22 @@ export async function POST(req: NextRequest) {
       if (businessTestResponse.ok) {
         const data = await businessTestResponse.json()
         if (data.account_type === "BUSINESS") {
-          console.log("✅ Detected Business API token - setting full permissions scope")
-          detectedScope = "instagram_manage_messages,instagram_manage_comments,user_profile,user_media"
+          console.log("✅ Account is verified as Business type")
+          // Business accounts might have additional capabilities
+          if (!detectedCapabilities.includes("instagram_manage_messages")) {
+            console.log("⚠️ Business account but no messaging detected - might be token limitation")
+          }
+        } else {
+          console.log("ℹ️ Account type:", data.account_type || "PERSONAL")
         }
       }
       
-      // Additional test: Try to access conversations endpoint (requires messaging permission)
-      const conversationTestResponse = await fetch(
-        `https://graph.facebook.com/v18.0/${resolvedInstagramId}/conversations?access_token=${accessToken}`
-      )
-      
-      if (conversationTestResponse.ok) {
-        console.log("✅ Token has messaging permissions - updating scope")
-        detectedScope = "instagram_manage_messages,instagram_manage_comments,user_profile,user_media"
-      }
-      
     } catch (error) {
-      console.log("⚠️ Could not detect token permissions, using basic scope")
+      console.log("⚠️ Error testing token capabilities:", error)
     }
     
-    console.log("🔍 Detected scope:", detectedScope)
+    const detectedScope = detectedCapabilities.join(",")
+    console.log("🔍 Final detected capabilities:", detectedScope)
     
     // Save or update the Instagram account connection
     try {

@@ -142,13 +142,10 @@ export function InstagramConnection({ onConnectionSuccess, compact = false }: In
         headers: {
           "Content-Type": "application/json",
         },
-                  body: JSON.stringify({
-            accessToken: cleanToken,
-            instagramId: accountData.id,
-            username: accountData.username,
-            accountType: accountData.account_type || "personal",
-            userId: user?.uid, // Send the Firebase Auth user ID
-          }),
+        body: JSON.stringify({
+          accessToken: cleanToken,
+          userId: user?.uid, // Send the Firebase Auth user ID
+        }),
       })
 
       if (!saveResponse.ok) {
