@@ -211,10 +211,9 @@ class DuplicateResponsePrevention {
    * Main duplicate prevention wrapper
    */
   static async processWithDuplicatePrevention<T>(
-    eventData: any,
+    eventData: any, 
     processingFunction: () => Promise<T>
   ): Promise<T | null> {
-    
     const eventId = this.generateEventId(eventData)
     const requestId = `dup_check_${Date.now()}`
     
