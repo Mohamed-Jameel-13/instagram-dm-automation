@@ -158,8 +158,27 @@ async function handleInstagramMessage(event: any, requestId: string, instagramAc
         }
         
         // CRITICAL FIX: Check if this Instagram account is the one receiving the webhook event
-        if (userInstagramAccount.providerAccountId !== instagramAccountId) {
+        let isAccountMatch = userInstagramAccount.providerAccountId === instagramAccountId
+        
+        if (!isAccountMatch) {
           console.log(`❌ [${requestId}] Instagram account mismatch: automation owner has ${userInstagramAccount.providerAccountId}, webhook is for ${instagramAccountId}`)
+          console.log(`🔄 [${requestId}] Attempting to update stored account ID to match webhook...`)
+          
+          // Try to update the account ID to match the webhook
+          try {
+            await prisma.account.update({
+              where: { id: userInstagramAccount.id },
+              data: { providerAccountId: instagramAccountId }
+            })
+            console.log(`✅ [${requestId}] Updated Instagram account ID from ${userInstagramAccount.providerAccountId} to ${instagramAccountId}`)
+            isAccountMatch = true
+          } catch (updateError) {
+            console.log(`❌ [${requestId}] Failed to update account ID: ${updateError}`)
+            continue
+          }
+        }
+        
+        if (!isAccountMatch) {
           continue
         }
         
@@ -410,11 +429,27 @@ export async function handleInstagramComment(commentData: any, requestId: string
         
         // CRITICAL FIX: Check if this Instagram account is the one receiving the webhook event
         // Note: Same Instagram account can have different IDs (User ID vs Business ID)
-        const isAccountMatch = userInstagramAccount.providerAccountId === instagramAccountId
+        let isAccountMatch = userInstagramAccount.providerAccountId === instagramAccountId
         
         if (!isAccountMatch) {
           console.log(`❌ [${requestId}] Instagram account mismatch: automation owner has ${userInstagramAccount.providerAccountId}, webhook is for ${instagramAccountId}`)
-          console.log(`ℹ️ [${requestId}] Note: Same Instagram account can have different IDs (User ID vs Business ID). If this is the same account, you may need to update the stored ID.`)
+          console.log(`🔄 [${requestId}] Attempting to update stored account ID to match webhook...`)
+          
+          // Try to update the account ID to match the webhook
+          try {
+            await prisma.account.update({
+              where: { id: userInstagramAccount.id },
+              data: { providerAccountId: instagramAccountId }
+            })
+            console.log(`✅ [${requestId}] Updated Instagram account ID from ${userInstagramAccount.providerAccountId} to ${instagramAccountId}`)
+            isAccountMatch = true
+          } catch (updateError) {
+            console.log(`❌ [${requestId}] Failed to update account ID: ${updateError}`)
+            continue
+          }
+        }
+        
+        if (!isAccountMatch) {
           continue
         }
 
