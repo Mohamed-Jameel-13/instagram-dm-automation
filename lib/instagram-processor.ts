@@ -513,10 +513,11 @@ export async function handleInstagramComment(commentData: any, requestId: string
           }
         }
         
-        if (!isBusinessAccount) {
-          console.log(`❌ [${requestId}] Instagram account ${userInstagramAccount.providerAccountId} doesn't have business permissions`)
-          continue
-        }
+        // DISABLED: Allow basic display tokens to work with comment automations
+        // if (!isBusinessAccount) {
+        //   console.log(`❌ [${requestId}] Instagram account ${userInstagramAccount.providerAccountId} doesn't have business permissions`)
+        //   continue
+        // }
         
         console.log(`✅ [${requestId}] Instagram account match confirmed: ${userInstagramAccount.providerAccountId}`)
         
@@ -1009,9 +1010,15 @@ async function sendDMWithRetry(account: any, recipientId: string, message: strin
   
   while (attempts < maxRetries) {
     try {
-      // Always use the Instagram Graph Messaging endpoint via Facebook Graph API
-      const apiEndpoint = `https://graph.facebook.com/v18.0/${account.providerAccountId}/messages`;
-      const requestBody = {
+      // Use appropriate API endpoint based on token type
+      const cleanedToken = (token: string) => token.trim().replace(/\s+/g, '').replace(/["'`]/g, '');
+      const token = cleanedToken(account.access_token);
+      let apiEndpoint;
+      let requestBody;
+      
+      // Try Facebook Graph API with query param auth
+      apiEndpoint = `https://graph.facebook.com/v18.0/${account.providerAccountId}/messages?access_token=${encodeURIComponent(token)}`;
+      requestBody = {
         recipient: { id: recipientId },
         message: { text: message },
         messaging_type: "RESPONSE"
@@ -1020,8 +1027,7 @@ async function sendDMWithRetry(account: any, recipientId: string, message: strin
       const response = await fetch(apiEndpoint, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${account.access_token}`,
+          'Content-Type': 'application/json'
         },
         body: JSON.stringify(requestBody),
       })
@@ -1033,6 +1039,39 @@ async function sendDMWithRetry(account: any, recipientId: string, message: strin
       
       const errorText = await response.text()
       console.error(`❌ [${requestId}] DM failed (attempt ${attempts + 1}):`, errorText)
+      
+      // If the first attempt fails with auth error, try Instagram Graph API
+      if (attempts === 0 && (errorText.includes("Invalid OAuth") || errorText.includes("access token"))) {
+        console.log(`🔄 [${requestId}] Trying Instagram Graph API endpoint for DM`)
+        const igApiEndpoint = `https://graph.instagram.com/v18.0/me/messages?access_token=${encodeURIComponent(token)}`;
+        const igResponse = await fetch(igApiEndpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(requestBody),
+        });
+        
+        if (igResponse.ok) {
+          console.log(`✅ [${requestId}] DM sent successfully via Instagram Graph API`)
+          return
+        }
+        
+        // Try form-encoded variant which some tokens require
+        const formBody = new URLSearchParams()
+        formBody.set('recipient', JSON.stringify({ id: recipientId }))
+        formBody.set('message', JSON.stringify({ text: message }))
+        formBody.set('messaging_type', 'RESPONSE')
+        
+        const formResponse = await fetch(apiEndpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: formBody as any,
+        });
+        
+        if (formResponse.ok) {
+          console.log(`✅ [${requestId}] DM sent successfully with form-encoded body`)
+          return
+        }
+      }
       
       attempts++
       if (attempts < maxRetries) {
