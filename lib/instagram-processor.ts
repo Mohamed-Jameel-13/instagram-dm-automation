@@ -523,8 +523,8 @@ export async function handleInstagramComment(commentData: any, requestId: string
         // Prevent infinite loops - don't reply to business account's own comments
         if (commenterId === userInstagramAccount.providerAccountId) continue
         
-        // Don't reply to replies (only top-level comments)
-        if (parentId) continue
+        // Don't reply to replies (only top-level comments) - DISABLED to allow replies to all comments
+        // if (parentId) continue
         
         // Check if comment is on selected posts
         let postsToCheck: string[] = []
