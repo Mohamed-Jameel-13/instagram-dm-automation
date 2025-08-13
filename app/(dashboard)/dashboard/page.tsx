@@ -1,28 +1,59 @@
 "use client"
 
 import Link from "next/link"
+import { useEffect, useState } from "react"
 import { ArrowRight, MessageSquare, Sparkles } from "lucide-react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, ResponsiveContainer } from "recharts"
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart"
+import { useFirebaseAuth } from "@/components/firebase-auth"
 
-// Sample data for the chart
-const activityData = [
-  { day: "Mon", count: 4 },
-  { day: "Tue", count: 7 },
-  { day: "Wed", count: 5 },
-  { day: "Thu", count: 8 },
-  { day: "Fri", count: 12 },
-  { day: "Sat", count: 9 },
-  { day: "Sun", count: 6 },
-]
+type ActivityPoint = { day: string; count: number }
+type Totals = { dm: number; comments: number; automations: number; activeAutomations: number; newFollowers: number; activeConversations: number }
 
 export default function DashboardPage() {
+  const { user } = useFirebaseAuth()
+  const [activity, setActivity] = useState<ActivityPoint[]>([])
+  const [totals, setTotals] = useState<Totals | null>(null)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    const fetchData = async () => {
+      if (!user?.uid) return
+      try {
+        const res = await fetch(`/api/dashboard?userId=${user.uid}`)
+        if (res.ok) {
+          const data = await res.json()
+          setActivity(data.activity || [])
+          setTotals(data.totals || null)
+        }
+      } catch (e) {
+      } finally {
+        setLoading(false)
+      }
+    }
+    fetchData()
+  }, [user?.uid])
+
+  const displayName = user?.displayName || user?.email || "there"
+
+  if (loading) {
+    return (
+      <div className="space-y-8">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">Welcome back{displayName ? `, ${displayName}` : ''}!</h1>
+          <p className="text-muted-foreground mt-2">Loading your Instagram automation insights…</p>
+        </div>
+        <div className="text-muted-foreground">Loading…</div>
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="text-3xl font-bold tracking-tight">Welcome back, John!</h1>
+        <h1 className="text-3xl font-bold tracking-tight">Welcome back{displayName ? `, ${displayName}` : ''}!</h1>
         <p className="text-muted-foreground mt-2">Here&apos;s what&apos;s happening with your Instagram automations.</p>
       </div>
 
@@ -85,7 +116,7 @@ export default function DashboardPage() {
                 }}
               >
                 <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={activityData}>
+                  <LineChart data={activity && activity.length ? activity : []}>
                     <CartesianGrid strokeDasharray="3 3" />
                     <XAxis dataKey="day" />
                     <YAxis />
@@ -110,8 +141,8 @@ export default function DashboardPage() {
             <CardDescription>Your comment automation performance</CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col items-center justify-center space-y-4 py-6">
-            <div className="text-5xl font-bold text-primary">100%</div>
-            <p className="text-sm text-muted-foreground">24 out of 24 comments replied</p>
+            <div className="text-5xl font-bold text-primary">{totals?.comments ?? 0}</div>
+            <p className="text-sm text-muted-foreground">comment interactions in the last 7 days</p>
             <MessageSquare className="h-10 w-10 text-primary/20" />
           </CardContent>
         </Card>
@@ -122,8 +153,8 @@ export default function DashboardPage() {
             <CardDescription>Your DM automation performance</CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col items-center justify-center space-y-4 py-6">
-            <div className="text-5xl font-bold text-primary">100%</div>
-            <p className="text-sm text-muted-foreground">36 out of 36 DMs replied</p>
+            <div className="text-5xl font-bold text-primary">{totals?.dm ?? 0}</div>
+            <p className="text-sm text-muted-foreground">DM interactions in the last 7 days</p>
             <Sparkles className="h-10 w-10 text-primary/20" />
           </CardContent>
         </Card>
