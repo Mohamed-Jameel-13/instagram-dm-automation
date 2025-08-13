@@ -922,7 +922,17 @@ async function replyToInstagramComment(commentId: string, automation: any, comme
     if (!dmResponse.ok) {
       const errorText = await dmResponse.text()
       console.error(`❌ [${requestId}] Private reply failed:`, errorText)
-      throw new Error(`Private reply failed: ${errorText}`)
+      
+      // Final fallback: Try public comment reply if both private methods fail
+      console.log(`💬 [${requestId}] Trying public comment reply as final fallback`)
+      try {
+        await replyToCommentWithRetry(account, commentId, responseMessage, requestId)
+        console.log(`✅ [${requestId}] Public comment reply sent successfully as fallback`)
+        return // Success with public reply, exit function
+      } catch (commentError) {
+        console.error(`💥 [${requestId}] All reply methods failed:`, commentError)
+        throw new Error(`All reply methods failed. Private reply: ${errorText}`)
+      }
     }
     
     console.log(`✅ [${requestId}] Private reply/DM sent successfully to user ${commenterId}`)
