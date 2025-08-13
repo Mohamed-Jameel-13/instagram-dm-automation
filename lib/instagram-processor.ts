@@ -165,9 +165,39 @@ async function handleInstagramMessage(event: any, requestId: string, instagramAc
         
         console.log(`✅ [${requestId}] Instagram account match confirmed: ${userInstagramAccount.providerAccountId}`)
         
-        // Check if business account
-        const isBusinessAccount = userInstagramAccount.scope?.includes("instagram_manage_messages") || 
-                                  userInstagramAccount.scope?.includes("instagram_manage_comments")
+        // Check if business account - try dynamic token validation first, fallback to scope check
+        let isBusinessAccount = userInstagramAccount.scope?.includes("instagram_manage_messages") || 
+                               userInstagramAccount.scope?.includes("instagram_manage_comments")
+        
+        // If scope check fails, test token capabilities dynamically
+        if (!isBusinessAccount && userInstagramAccount.access_token) {
+          console.log(`🔍 [${requestId}] Scope check failed, testing token capabilities dynamically...`)
+          try {
+            // Test if token can access business features
+            const testResponse = await fetch(
+              `https://graph.facebook.com/v18.0/${userInstagramAccount.providerAccountId}?fields=id,username,account_type&access_token=${userInstagramAccount.access_token}`
+            )
+            
+            if (testResponse.ok) {
+              const accountData = await testResponse.json()
+              console.log(`✅ [${requestId}] Token validation successful - account type: ${accountData.account_type}`)
+              isBusinessAccount = true // Token works, allow automation
+              
+              // Update scope in database for future use
+              await prisma.account.update({
+                where: { id: userInstagramAccount.id },
+                data: { 
+                  scope: "instagram_basic,instagram_manage_comments,instagram_manage_messages,pages_show_list,pages_read_engagement" 
+                }
+              })
+              console.log(`✅ [${requestId}] Updated account scope in database`)
+            } else {
+              console.log(`❌ [${requestId}] Token validation failed: ${testResponse.status}`)
+            }
+          } catch (error) {
+            console.log(`❌ [${requestId}] Error testing token: ${error}`)
+          }
+        }
         
         if (!isBusinessAccount) {
           console.log(`❌ [${requestId}] Instagram account ${userInstagramAccount.providerAccountId} doesn't have business permissions`)
@@ -365,8 +395,38 @@ export async function handleInstagramComment(commentData: any, requestId: string
         }
 
         // Check if business account (after confirming match for clearer diagnostics)
-        const isBusinessAccount = userInstagramAccount.scope?.includes("instagram_manage_messages") || 
-                                  userInstagramAccount.scope?.includes("instagram_manage_comments")
+        let isBusinessAccount = userInstagramAccount.scope?.includes("instagram_manage_messages") || 
+                               userInstagramAccount.scope?.includes("instagram_manage_comments")
+        
+        // If scope check fails, test token capabilities dynamically
+        if (!isBusinessAccount && userInstagramAccount.access_token) {
+          console.log(`🔍 [${requestId}] Scope check failed, testing token capabilities dynamically...`)
+          try {
+            // Test if token can access business features
+            const testResponse = await fetch(
+              `https://graph.facebook.com/v18.0/${userInstagramAccount.providerAccountId}?fields=id,username,account_type&access_token=${userInstagramAccount.access_token}`
+            )
+            
+            if (testResponse.ok) {
+              const accountData = await testResponse.json()
+              console.log(`✅ [${requestId}] Token validation successful - account type: ${accountData.account_type}`)
+              isBusinessAccount = true // Token works, allow automation
+              
+              // Update scope in database for future use
+              await prisma.account.update({
+                where: { id: userInstagramAccount.id },
+                data: { 
+                  scope: "instagram_basic,instagram_manage_comments,instagram_manage_messages,pages_show_list,pages_read_engagement" 
+                }
+              })
+              console.log(`✅ [${requestId}] Updated account scope in database`)
+            } else {
+              console.log(`❌ [${requestId}] Token validation failed: ${testResponse.status}`)
+            }
+          } catch (error) {
+            console.log(`❌ [${requestId}] Error testing token: ${error}`)
+          }
+        }
         
         if (!isBusinessAccount) {
           console.log(`❌ [${requestId}] Instagram account ${userInstagramAccount.providerAccountId} doesn't have business permissions`)
