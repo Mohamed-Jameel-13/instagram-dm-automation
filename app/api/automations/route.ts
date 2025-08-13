@@ -15,13 +15,13 @@ export async function GET(req: NextRequest) {
     }
     
     // Build where clause
-    const where: any = {
-      active: true
-    }
-    
-    // If user ID is provided, filter by user
+    // If a userId is provided, return that user's automations (both active and inactive)
+    // If no userId (e.g., worker/diagnostic usage), return only active automations
+    const where: any = {}
     if (userId) {
       where.userId = userId
+    } else {
+      where.active = true
     }
     
     // Get automations with user details

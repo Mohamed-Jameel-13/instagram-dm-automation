@@ -143,13 +143,14 @@ export default function AutomationsPage() {
   }
 
   const handleToggleActive = async (id: string) => {
-    if (!isInstagramConnected) {
-      return
-    }
-    
     try {
       const automation = automations.find(a => a.id === id)
       if (!automation) return
+
+      // Allow deactivation even if not connected; block activation when disconnected
+      if (!isInstagramConnected && !automation.active) {
+        return
+      }
 
       const response = await fetch(`/api/automations/${id}`, {
         method: "PATCH",
@@ -158,13 +159,14 @@ export default function AutomationsPage() {
         },
         body: JSON.stringify({
           active: !automation.active,
+          userId: user?.uid,
         }),
       })
 
       if (response.ok) {
         setAutomations(
-          automations.map((automation) =>
-            automation.id === id ? { ...automation, active: !automation.active } : automation,
+          automations.map((automationItem) =>
+            automationItem.id === id ? { ...automationItem, active: !automationItem.active } : automationItem,
           ),
         )
       }
@@ -281,7 +283,7 @@ export default function AutomationsPage() {
                   <Switch 
                     checked={automation.active} 
                     onCheckedChange={() => handleToggleActive(automation.id)}
-                    disabled={!isInstagramConnected}
+                    disabled={!isInstagramConnected && !automation.active}
                   />
                 </div>
               </div>
