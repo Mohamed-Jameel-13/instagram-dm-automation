@@ -29,6 +29,8 @@ export async function getAutomationRules(userId?: string, active = true) {
   const cacheKey = userId ? `automation_rules:${userId}` : 'automation_rules:all'
   
   try {
+    const sanitizeAccessToken = (token: string) =>
+      token.trim().replace(/\s+/g, '').replace(/["'`]/g, '')
     // Check cache first (if Redis is available)
     if (redis) {
       const cached = await redis.get(cacheKey)
@@ -870,18 +872,47 @@ async function replyToInstagramComment(commentId: string, automation: any, comme
     
     let privateReplyError: string | null = null;
 
-    // STEP 1: Attempt to use the official 'private_replies' endpoint (always Graph API host).
-    // This is the correct method for responding to comments privately and should bypass the 24-hour window.
-    const privateReplyEndpoint = `https://graph.facebook.com/v18.0/${commentId}/private_replies`;
+    // STEP 1: Attempt to use the official 'private_replies' endpoint.
+    // Try Facebook Graph first (Business), then Instagram Graph (IG tokens) with access_token as query param.
+    const cleanedToken = sanitizeAccessToken(account.access_token)
+    let dmResponse = await fetch(
+      `https://graph.facebook.com/v18.0/${commentId}/private_replies?access_token=${encodeURIComponent(cleanedToken)}`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ message: responseMessage }),
+      }
+    );
 
-    let dmResponse = await fetch(privateReplyEndpoint, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${account.access_token}`,
-      },
-      body: JSON.stringify({ message: responseMessage }),
-    });
+    // If FB Graph failed and token looks like IG basic token, try Instagram Graph host
+    if (!dmResponse.ok && (cleanedToken.startsWith('IG') || cleanedToken.startsWith('IGQVJ'))) {
+      dmResponse = await fetch(
+        `https://graph.instagram.com/v18.0/${commentId}/private_replies?access_token=${encodeURIComponent(cleanedToken)}`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ message: responseMessage }),
+        }
+      );
+    }
+
+    // If still failing, try form-encoded body variant which some tokens require
+    if (!dmResponse.ok) {
+      dmResponse = await fetch(
+        `https://graph.facebook.com/v18.0/${commentId}/private_replies?access_token=${encodeURIComponent(cleanedToken)}`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded'
+          },
+          body: new URLSearchParams({ message: responseMessage }) as any,
+        }
+      );
+    }
 
     // STEP 2: If the official endpoint fails, log the specific error and try the direct message fallback.
     if (!dmResponse.ok) {
@@ -890,7 +921,7 @@ async function replyToInstagramComment(commentId: string, automation: any, comme
       console.log(`⚠️ [${requestId}] Fallback: Attempting to send a standard direct message.`);
 
       // Determine the correct fallback endpoint: send a DM referencing the comment_id to open the messaging window.
-      const fallbackDmEndpoint = `https://graph.facebook.com/v18.0/${account.providerAccountId}/messages`;
+      const fallbackDmEndpoint = `https://graph.facebook.com/v18.0/${account.providerAccountId}/messages?access_token=${encodeURIComponent(cleanedToken)}`;
       const fallbackRequestBody = {
         recipient: { comment_id: commentId },
         message: { text: responseMessage },
@@ -900,11 +931,22 @@ async function replyToInstagramComment(commentId: string, automation: any, comme
       dmResponse = await fetch(fallbackDmEndpoint, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${account.access_token}`,
+          'Content-Type': 'application/json'
         },
         body: JSON.stringify(fallbackRequestBody),
       });
+
+      // If fallback DM still fails, try form-encoded variant
+      if (!dmResponse.ok) {
+        const formBody = new URLSearchParams()
+        formBody.set('recipient', JSON.stringify({ comment_id: commentId }))
+        formBody.set('message', JSON.stringify({ text: responseMessage }))
+        dmResponse = await fetch(fallbackDmEndpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: formBody as any,
+        });
+      }
     }
 
     // STEP 3: If both DM methods fail, log the final error and fall back to a public comment.
