@@ -75,14 +75,19 @@ export function InstagramConnection({ onConnectionSuccess, compact = false }: In
       return
     }
     
-    // Check token format - more flexible check for Facebook/Instagram tokens
-    if (!cleanToken.startsWith('IG') && 
-        !cleanToken.startsWith('EAAC') && 
-        !cleanToken.startsWith('IGQVJ') && 
-        !cleanToken.includes('EAF')) {
+    // Check token format - even more flexible check for Facebook/Instagram tokens
+    const isLikelyValidToken = 
+      cleanToken.length > 50 && (
+        cleanToken.startsWith('IG') || 
+        cleanToken.includes('EAA') ||  // Matches both EAAC and EAA
+        cleanToken.includes('EAF') ||  // Matches EAF tokens
+        cleanToken.startsWith('IGQVJ')
+      );
+      
+    if (!isLikelyValidToken) {
       toast({
-        title: "Incorrect Token Type", 
-        description: "Please use Instagram API tokens (Business API tokens contain 'EAAC' or 'EAF', Basic Display API tokens start with 'IGQVJ' or 'IG').",
+        title: "Incorrect Token Format", 
+        description: "Please use a valid Instagram or Facebook access token. Valid tokens are usually 100+ characters long.",
         variant: "destructive",
       })
       return

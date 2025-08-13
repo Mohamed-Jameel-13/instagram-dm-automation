@@ -117,6 +117,59 @@ export async function POST(req: NextRequest) {
       }
     }
     
+    // If all validation attempts failed, try one last approach using the debug token
+    if (!testResponse || !testResponse.ok) {
+      try {
+        console.log('🔄 All direct API tests failed, trying debug_token as last resort...');
+        const debugResponse = await fetch(`https://graph.facebook.com/debug_token?input_token=${accessToken}&access_token=${accessToken}`);
+        
+        if (debugResponse.ok) {
+          const debugData = await debugResponse.json();
+          console.log('🔍 Debug token info:', JSON.stringify(debugData, null, 2));
+          
+          // Check if this is a valid token with Instagram permissions
+          if (debugData?.data?.is_valid && 
+              debugData?.data?.scopes?.includes('instagram_basic') && 
+              debugData?.data?.granular_scopes) {
+            
+            // Find the Instagram business account ID from granular scopes
+            let instagramAccountId = null;
+            for (const scope of debugData.data.granular_scopes) {
+              if ((scope.scope === 'instagram_basic' || 
+                   scope.scope === 'instagram_manage_comments' || 
+                   scope.scope === 'instagram_manage_messages') && 
+                  scope.target_ids && 
+                  scope.target_ids.length > 0) {
+                instagramAccountId = scope.target_ids[0];
+                break;
+              }
+            }
+            
+            if (instagramAccountId) {
+              console.log(`✅ Found Instagram account ID from debug token: ${instagramAccountId}`);
+              
+              // Try to get account details using the Instagram ID
+              const igDetailsResponse = await fetch(
+                `https://graph.facebook.com/v18.0/${instagramAccountId}?fields=id,username,profile_picture_url&access_token=${accessToken}`
+              );
+              
+              if (igDetailsResponse.ok) {
+                testResponse = igDetailsResponse;
+                console.log('✅ Successfully validated token using Instagram business ID');
+              } else {
+                const errorText = await igDetailsResponse.text();
+                console.error(`❌ Instagram business ID validation failed: ${igDetailsResponse.status}`, errorText);
+                allErrors.push(`Instagram business ID (${igDetailsResponse.status}): ${errorText}`);
+              }
+            }
+          }
+        }
+      } catch (error) {
+        console.error('💥 Final validation attempt exception:', error);
+        allErrors.push(`Final validation exception: ${error.message}`);
+      }
+    }
+    
     // If all validation attempts failed, return detailed error
     if (!testResponse || !testResponse.ok) {
       console.error('❌ All validation attempts failed');
@@ -131,10 +184,60 @@ export async function POST(req: NextRequest) {
     console.log("✅ Instagram API validation passed:", meData)
 
     // Resolve the business Instagram account ID and username if available
-    // For Business tokens: traverse /me/accounts → instagram_business_account
-    let resolvedInstagramId = meData.id as string
-    let resolvedUsername = meData.username as string | undefined
-    let resolvedAccountType = isBusiness ? "BUSINESS" : "PERSONAL"
+    let resolvedInstagramId = meData.id as string;
+    let resolvedUsername = meData.username as string | undefined;
+    let resolvedAccountType = isBusiness ? "BUSINESS" : "PERSONAL";
+    let instagramIdFromDebugToken = null;
+    
+    // Try to get Instagram ID from debug token if we haven't already
+    try {
+      console.log('🔍 Checking debug token for Instagram ID...');
+      const debugResponse = await fetch(`https://graph.facebook.com/debug_token?input_token=${accessToken}&access_token=${accessToken}`);
+      
+      if (debugResponse.ok) {
+        const debugData = await debugResponse.json();
+        
+        // Find the Instagram business account ID from granular scopes
+        if (debugData?.data?.granular_scopes) {
+          for (const scope of debugData.data.granular_scopes) {
+            if ((scope.scope === 'instagram_basic' || 
+                 scope.scope === 'instagram_manage_comments' || 
+                 scope.scope === 'instagram_manage_messages') && 
+                scope.target_ids && 
+                scope.target_ids.length > 0) {
+              instagramIdFromDebugToken = scope.target_ids[0];
+              console.log(`✅ Found Instagram ID in debug token: ${instagramIdFromDebugToken}`);
+              break;
+            }
+          }
+        }
+      }
+    } catch (error) {
+      console.error('💥 Error getting Instagram ID from debug token:', error);
+    }
+    
+    // If we found an Instagram ID in the debug token, use it
+    if (instagramIdFromDebugToken) {
+      resolvedInstagramId = instagramIdFromDebugToken;
+      resolvedAccountType = "BUSINESS"; // If it's in granular scopes, it's a business account
+      
+      // Try to get the username using this ID
+      try {
+        const igDetailsResponse = await fetch(
+          `https://graph.facebook.com/v18.0/${resolvedInstagramId}?fields=username&access_token=${accessToken}`
+        );
+        
+        if (igDetailsResponse.ok) {
+          const igDetails = await igDetailsResponse.json();
+          if (igDetails.username) {
+            resolvedUsername = igDetails.username;
+            console.log(`✅ Found username for Instagram ID: ${resolvedUsername}`);
+          }
+        }
+      } catch (error) {
+        console.error('💥 Error getting username for Instagram ID:', error);
+      }
+    }
 
     if (isBusiness) {
       try {
