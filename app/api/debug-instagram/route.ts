@@ -64,27 +64,47 @@ export async function GET(req: NextRequest) {
         try {
           console.log(`🔍 [${requestId}] Testing Instagram API for account ${account.providerAccountId}`)
           
-          // Test basic API call
-          const response = await fetch(
-            `https://graph.facebook.com/v18.0/${account.providerAccountId}?fields=id,username,account_type&access_token=${account.access_token}`
-          )
+          // Test basic API call - use appropriate endpoint based on token type
+          let response;
+          if (account.access_token.startsWith('IGAAR') || account.access_token.startsWith('IGQVJ')) {
+            // Basic Display API tokens use Instagram Graph API with /me
+            console.log(`🔍 [${requestId}] Testing with Instagram Graph API (Basic Display token)`)
+            response = await fetch(
+              `https://graph.instagram.com/me?fields=id,username&access_token=${account.access_token}`
+            )
+          } else {
+            // Business API tokens use Facebook Graph API with account ID
+            console.log(`🔍 [${requestId}] Testing with Facebook Graph API (Business token)`)
+            response = await fetch(
+              `https://graph.facebook.com/v18.0/${account.providerAccountId}?fields=id,username,account_type&access_token=${account.access_token}`
+            )
+          }
           
           if (response.ok) {
             const data = await response.json()
             accountDebug.tokenStatus = "valid"
             accountDebug.apiTest = {
               success: true,
-              accountType: data.account_type,
+              accountType: data.account_type || "PERSONAL", // Basic Display API doesn't return account_type
               username: data.username,
               id: data.id
             }
             
-            // Check if it's a business account
-            if (data.account_type !== "BUSINESS") {
+            // Check if it's a business account (only relevant for Business API tokens)
+            if (!account.access_token.startsWith('IGAAR') && !account.access_token.startsWith('IGQVJ')) {
+              if (data.account_type !== "BUSINESS") {
+                debug.issues.push({
+                  account: account.providerAccountId,
+                  issue: "Account is not a business account",
+                  solution: "Convert Instagram account to Business account in Instagram settings"
+                })
+              }
+            } else {
+              // For Basic Display API tokens, note they work differently
               debug.issues.push({
                 account: account.providerAccountId,
-                issue: "Account is not a business account",
-                solution: "Convert Instagram account to Business account in Instagram settings"
+                issue: "Using Basic Display API token - limited automation capabilities",
+                solution: "Basic Display tokens can work for some features but may have messaging restrictions"
               })
             }
             

@@ -35,7 +35,15 @@ export async function GET(req: NextRequest) {
     // Test token validity. IMPORTANT: Do NOT delete the account on failure.
     // Try Business API then Basic Display API; preserve connection state and surface token validity.
     try {
-      let response = await fetch(`https://graph.facebook.com/me?fields=id,username,account_type&access_token=${account.access_token}`)
+      // Use appropriate API endpoint based on token type
+      let response;
+      if (account.access_token.startsWith('IGAAR') || account.access_token.startsWith('IGQVJ')) {
+        // Basic Display API tokens use Instagram Graph API
+        response = await fetch(`https://graph.instagram.com/me?fields=id,username&access_token=${account.access_token}`)
+      } else {
+        // Business API tokens use Facebook Graph API
+        response = await fetch(`https://graph.facebook.com/me?fields=id,username,account_type&access_token=${account.access_token}`)
+      }
       let tokenValid = response.ok
       if (!tokenValid) {
         response = await fetch(`https://graph.instagram.com/me?fields=id,username&access_token=${account.access_token}`)

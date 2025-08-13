@@ -30,10 +30,15 @@ export async function POST(req: NextRequest) {
       }, { status: 400 })
     }
 
-    // Test the token with Business API
-    const response = await fetch(
-      `https://graph.facebook.com/me?fields=id,username,account_type&access_token=${account.access_token}`
-    )
+    // Test the token with appropriate API endpoint based on token type
+    let validationUrl;
+    if (account.access_token.startsWith('IGAAR') || account.access_token.startsWith('IGQVJ')) {
+      validationUrl = `https://graph.instagram.com/me?fields=id,username&access_token=${account.access_token}`;
+    } else {
+      validationUrl = `https://graph.facebook.com/me?fields=id,username,account_type&access_token=${account.access_token}`;
+    }
+    
+    const response = await fetch(validationUrl)
 
     let isBusiness = false
     let accountData = null
