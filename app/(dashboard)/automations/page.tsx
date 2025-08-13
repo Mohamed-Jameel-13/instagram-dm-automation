@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { Plus, Zap, Trash2 } from "lucide-react"
@@ -23,6 +23,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog"
+import { useCachedFetch } from "@/hooks/use-cached-fetch"
 
 interface InstagramAccount {
   id: string
@@ -53,61 +54,37 @@ export default function AutomationsPage() {
   const [connectedAccount, setConnectedAccount] = useState<InstagramAccount | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [deletingId, setDeletingId] = useState<string | null>(null)
+  const initializedRef = useRef(false)
 
-  // Fetch user's automations
+  const automationsUrl = user?.uid ? `/api/automations?userId=${user.uid}` : null
+  const { data: automationsResponse, loading: loadingAutomations, refresh: refreshAutomations } = useCachedFetch<{ automations: Automation[] }>(automationsUrl, { ttlMs: 30000 })
+
+  // Seed local state from cache without flicker
   useEffect(() => {
-    const fetchAutomations = async () => {
-      if (user?.uid) {
-        try {
-          console.log('🔍 Fetching automations for user:', user.uid)
-          const response = await fetch(`/api/automations?userId=${user.uid}`)
-          if (response.ok) {
-            const data = await response.json()
-            console.log('✅ Automations fetched:', data)
-            setAutomations(data.automations || [])
-          } else {
-            console.error('❌ Failed to fetch automations:', response.status)
-          }
-        } catch (error) {
-          console.error("Error fetching automations:", error)
-        }
-      }
+    if (automationsResponse?.automations) {
+      setAutomations(automationsResponse.automations)
     }
+  }, [automationsResponse])
 
-    if (!loading && user?.uid) {
-      fetchAutomations()
-    }
-  }, [user, loading])
+  // Check Instagram connection status with cache
+  const igStatusUrl = user?.uid ? `/api/instagram/status?userId=${user.uid}` : null
+  const { data: igStatus, loading: loadingIgStatus, refresh: refreshIgStatus } = useCachedFetch<any>(igStatusUrl, { ttlMs: 30000 })
 
-  // Check Instagram connection status
   useEffect(() => {
-    const checkInstagramConnection = async () => {
-      if (user?.uid) {
-        try {
-          setIsLoading(true)
-          const response = await fetch(`/api/instagram/status?userId=${user.uid}`)
-          if (response.ok) {
-            const data = await response.json()
-            setIsInstagramConnected(data.connected)
-            if (data.connected) {
-              setConnectedAccount(data.account)
-            }
-          }
-        } catch (error) {
-          console.error("Error checking Instagram status:", error)
-          setIsInstagramConnected(false)
-        } finally {
-          setIsLoading(false)
-        }
-      } else {
-        setIsLoading(false)
-      }
+    if (igStatus) {
+      setIsInstagramConnected(!!igStatus.connected)
+      setConnectedAccount(igStatus.connected ? igStatus.account : null)
     }
+  }, [igStatus])
 
-    if (!loading) {
-      checkInstagramConnection()
+  // Initial loading state resolution
+  useEffect(() => {
+    if (initializedRef.current) return
+    if (!loading && !loadingAutomations && !loadingIgStatus) {
+      setIsLoading(false)
+      initializedRef.current = true
     }
-  }, [user, loading])
+  }, [loading, loadingAutomations, loadingIgStatus])
 
   const handleCreateAutomation = async () => {
     if (!isInstagramConnected) {
@@ -135,6 +112,7 @@ export default function AutomationsPage() {
       if (response.ok) {
         const data = await response.json()
         setAutomations([...automations, data.automation])
+        refreshAutomations()
         router.push(`/automations/${data.automation.id}`)
       }
     } catch (error) {
@@ -169,6 +147,7 @@ export default function AutomationsPage() {
             automationItem.id === id ? { ...automationItem, active: !automationItem.active } : automationItem,
           ),
         )
+        refreshAutomations()
       }
     } catch (error) {
       console.error("Error toggling automation:", error)
@@ -184,6 +163,7 @@ export default function AutomationsPage() {
       })
       if (response.ok) {
         setAutomations((prev) => prev.filter((a) => a.id !== id))
+        refreshAutomations()
       } else {
         console.error("Failed to delete automation", await response.text())
       }
@@ -196,21 +176,11 @@ export default function AutomationsPage() {
 
   const handleConnectionSuccess = () => {
     // Refresh the Instagram connection status when user connects
-    setIsInstagramConnected(true)
+      setIsInstagramConnected(true)
     // Also refresh the automations list
     if (user?.uid) {
-      const fetchAutomations = async () => {
-        try {
-          const response = await fetch(`/api/automations?userId=${user.uid}`)
-          if (response.ok) {
-            const data = await response.json()
-            setAutomations(data.automations || [])
-          }
-        } catch (error) {
-          console.error("Error fetching automations:", error)
-        }
-      }
-      fetchAutomations()
+        refreshIgStatus()
+        refreshAutomations()
     }
   }
 

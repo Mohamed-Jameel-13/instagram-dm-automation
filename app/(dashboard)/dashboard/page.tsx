@@ -8,43 +8,28 @@ import { Button } from "@/components/ui/button"
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, ResponsiveContainer } from "recharts"
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart"
 import { useFirebaseAuth } from "@/components/firebase-auth"
+import { useCachedFetch } from "@/hooks/use-cached-fetch"
 
 type ActivityPoint = { day: string; count: number }
 type Totals = { dm: number; comments: number; automations: number; activeAutomations: number; newFollowers: number; activeConversations: number }
 
 export default function DashboardPage() {
   const { user } = useFirebaseAuth()
-  const [activity, setActivity] = useState<ActivityPoint[]>([])
-  const [totals, setTotals] = useState<Totals | null>(null)
-  const [loading, setLoading] = useState(true)
+  const dashboardUrl = user?.uid ? `/api/dashboard?userId=${user.uid}` : null
+  const { data, loading, refresh } = useCachedFetch<{ activity: ActivityPoint[]; totals: Totals }>(dashboardUrl, {
+    ttlMs: 30000,
+  })
+  const activity = data?.activity ?? []
+  const totals = data?.totals ?? null
 
-  const fetchData = async () => {
-    if (!user?.uid) return
-    try {
-      const res = await fetch(`/api/dashboard?userId=${user.uid}`)
-      if (res.ok) {
-        const data = await res.json()
-        setActivity(data.activity || [])
-        setTotals(data.totals || null)
-      }
-    } catch (e) {
-    } finally {
-      setLoading(false)
-    }
-  }
-
+  // Background auto-refresh
   useEffect(() => {
-    fetchData()
-  }, [user?.uid])
-
-  // Lightweight auto-refresh to reflect new activity
-  useEffect(() => {
-    if (!user?.uid) return
+    if (!dashboardUrl) return
     const id = setInterval(() => {
-      fetchData()
+      refresh()
     }, 15000)
     return () => clearInterval(id)
-  }, [user?.uid])
+  }, [dashboardUrl, refresh])
 
   const displayName = user?.displayName || user?.email || "there"
 
