@@ -31,13 +31,41 @@ export async function POST(req: NextRequest) {
     console.log("✅ Basic validation passed, testing access token...")
 
     // Verify the access token: try Business API, then Basic Display API
-    let testResponse = await fetch(`https://graph.facebook.com/me?fields=id,username,account_type&access_token=${accessToken}`)
-    let isBusiness = false
-    if (!testResponse.ok) {
-      // Fallback to Basic Display API for tokens like IGQVJ... / IGA...
-      testResponse = await fetch(`https://graph.instagram.com/me?fields=id,username&access_token=${accessToken}`)
-    } else {
-      isBusiness = true
+    // First, determine if it's likely a Facebook token (EAF/EAAC) or Instagram token (IG/IGQVJ)
+    const isLikelyFacebookToken = accessToken.includes('EAF') || accessToken.startsWith('EAAC');
+    const isLikelyInstagramToken = accessToken.startsWith('IG') || accessToken.startsWith('IGQVJ');
+    
+    console.log(`🔍 Token appears to be: ${isLikelyFacebookToken ? 'Facebook/Business API' : isLikelyInstagramToken ? 'Instagram Basic Display API' : 'Unknown type'}`);
+    
+    // Try the most likely endpoint first based on token format
+    let testResponse;
+    let isBusiness = false;
+    
+    if (isLikelyFacebookToken) {
+      // Try Facebook Graph API first for EAF/EAAC tokens
+      console.log('🔄 Testing with Facebook Graph API first...');
+      testResponse = await fetch(`https://graph.facebook.com/me?fields=id,username,account_type&access_token=${accessToken}`);
+      if (testResponse.ok) {
+        isBusiness = true;
+      }
+    }
+    
+    // If that didn't work or it's an Instagram token, try Instagram Graph API
+    if (!testResponse || !testResponse.ok) {
+      console.log('🔄 Testing with Instagram Graph API...');
+      testResponse = await fetch(`https://graph.instagram.com/me?fields=id,username&access_token=${accessToken}`);
+    }
+    
+    // If both failed, try one more time with debug info
+    if (!testResponse || !testResponse.ok) {
+      console.log('⚠️ Both API tests failed, trying debug endpoint...');
+      testResponse = await fetch(`https://graph.facebook.com/debug_token?input_token=${accessToken}&access_token=${accessToken}`);
+      if (testResponse.ok) {
+        const debugData = await testResponse.json();
+        console.log('🔍 Debug token info:', JSON.stringify(debugData, null, 2));
+        // Try main endpoint again with more info
+        testResponse = await fetch(`https://graph.facebook.com/me?fields=id,username,account_type&access_token=${accessToken}`);
+      }
     }
     
     if (!testResponse.ok) {

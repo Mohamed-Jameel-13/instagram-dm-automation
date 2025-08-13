@@ -75,11 +75,14 @@ export function InstagramConnection({ onConnectionSuccess, compact = false }: In
       return
     }
     
-    // Check token format
-    if (!cleanToken.startsWith('IG') && !cleanToken.startsWith('EAAC') && !cleanToken.startsWith('IGQVJ') && !cleanToken.startsWith('EAF')) {
+    // Check token format - more flexible check for Facebook/Instagram tokens
+    if (!cleanToken.startsWith('IG') && 
+        !cleanToken.startsWith('EAAC') && 
+        !cleanToken.startsWith('IGQVJ') && 
+        !cleanToken.includes('EAF')) {
       toast({
         title: "Incorrect Token Type", 
-        description: "Please use Instagram API tokens (Business API tokens start with 'EAAC' or 'EAF', Basic Display API tokens start with 'IGQVJ' or 'IG').",
+        description: "Please use Instagram API tokens (Business API tokens contain 'EAAC' or 'EAF', Basic Display API tokens start with 'IGQVJ' or 'IG').",
         variant: "destructive",
       })
       return
