@@ -944,6 +944,11 @@ async function replyToInstagramComment(commentId: string, automation: any, comme
       const errorText = await dmResponse.text()
       console.error(`❌ [${requestId}] Private reply failed:`, errorText)
       
+      // Check if it's a messaging window restriction
+      if (errorText.includes("outside of allowed window") || errorText.includes("2534022")) {
+        console.log(`⏰ [${requestId}] DM failed due to messaging window restriction - falling back to comment reply immediately`)
+      }
+      
       // Final fallback: Try public comment reply if both private methods fail
       console.log(`💬 [${requestId}] Trying public comment reply as final fallback`)
       try {
@@ -1044,8 +1049,17 @@ async function replyToCommentWithRetry(account: any, commentId: string, message:
   
   while (attempts < maxRetries) {
     try {
-      // Use correct Instagram Business API endpoint for comment replies
-      const response = await fetch(`https://graph.facebook.com/v18.0/${commentId}/replies`, {
+      // Use appropriate API endpoint based on token type
+      let apiEndpoint;
+      if (account.access_token.startsWith('IGAAR') || account.access_token.startsWith('IGQVJ')) {
+        console.log(`🔄 [${requestId}] Using Instagram Graph API for comment reply`)
+        apiEndpoint = `https://graph.instagram.com/v18.0/${commentId}/replies`;
+      } else {
+        console.log(`🔄 [${requestId}] Using Facebook Graph API for comment reply`)
+        apiEndpoint = `https://graph.facebook.com/v18.0/${commentId}/replies`;
+      }
+      
+      const response = await fetch(apiEndpoint, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
