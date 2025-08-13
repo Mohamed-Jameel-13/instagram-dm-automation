@@ -866,79 +866,39 @@ async function replyToInstagramComment(commentId: string, automation: any, comme
       throw new Error("No Instagram access token found")
     }
     
-    // FIXED LOGIC: Only send private DM, not both comment reply and DM
-    // Based on Instagram's Private Reply feature, we use the comment_id as recipient
-    
-    // Response message already determined above - use it directly
-    
-    // Prefer Instagram Private Reply API. If it fails, fallback to regular DM endpoint.
-    
-    // NUCLEAR PREVENTION: Absolute final check before ANY message is sent (skip for real users)
-    if (!isRealInstagramUser) {
-      if (!NuclearDuplicatePrevention.canSendMessage(commenterId, commentId, `automation_${automation.id}`)) {
-        console.log(`🚫 NUCLEAR ABORT: Message sending ABORTED by nuclear duplicate prevention`)
-        return // Exit immediately - do not send message
-      }
-    } else {
-      console.log(`✅ [${requestId}] REAL USER BYPASS: Skipping nuclear duplicate prevention for message sending`)
-    }
-    
     // Use Instagram's Private Reply feature for comments instead of regular DMs
     // This is specifically designed for responding to comments privately and has different permissions
     console.log(`📩 [${requestId}] Sending private reply to comment ${commentId} from user ${commenterId}`)
     
-    // Try Instagram's Private Reply API first (comment-specific)
-    // Use appropriate endpoint based on token type
-    let apiEndpoint;
+    // Use appropriate endpoint for DM based on token type
+    let dmEndpoint;
+    let requestBody;
+
     if (account.access_token.startsWith('IGAAR') || account.access_token.startsWith('IGQVJ')) {
-      console.log(`🔄 [${requestId}] Using Instagram Graph API for Basic Display token`)
-      apiEndpoint = `https://graph.instagram.com/v18.0/${commentId}/private_replies`;
+      console.log(`🔄 [${requestId}] Using Instagram Graph API for DM`)
+      dmEndpoint = `https://graph.instagram.com/v18.0/me/messages`;
+      requestBody = {
+        recipient: { id: commenterId },
+        message: { text: responseMessage }
+      };
     } else {
-      console.log(`🔄 [${requestId}] Using Facebook Graph API for Business token`)
-      apiEndpoint = `https://graph.facebook.com/v18.0/${commentId}/private_replies`;
+      console.log(`🔄 [${requestId}] Using Facebook Graph API for DM`)
+      dmEndpoint = `https://graph.facebook.com/v18.0/${account.providerAccountId}/messages`;
+      requestBody = {
+        recipient: { id: commenterId },
+        message: { text: responseMessage },
+        messaging_type: "RESPONSE"
+      };
     }
     
-    let dmResponse = await fetch(apiEndpoint, {
+    let dmResponse = await fetch(dmEndpoint, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${account.access_token}`,
       },
-      body: JSON.stringify({
-        message: responseMessage
-      }),
+      body: JSON.stringify(requestBody),
     })
-    
-    // If private reply fails, try regular messaging as fallback
-    if (!dmResponse.ok) {
-      console.log(`⚠️ [${requestId}] Private reply failed, trying regular DM as fallback`)
-      
-      // Use appropriate endpoint for DM based on token type
-      let dmEndpoint;
-      if (account.access_token.startsWith('IGAAR') || account.access_token.startsWith('IGQVJ')) {
-        console.log(`🔄 [${requestId}] Using Instagram Graph API for DM fallback`)
-        dmEndpoint = `https://graph.instagram.com/v18.0/me/messages`;
-      } else {
-        console.log(`🔄 [${requestId}] Using Facebook Graph API for DM fallback`)
-        dmEndpoint = `https://graph.facebook.com/v18.0/${account.providerAccountId}/messages`;
-      }
-      
-      dmResponse = await fetch(dmEndpoint, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${account.access_token}`,
-        },
-        body: JSON.stringify({
-          recipient: { 
-            id: commenterId  // Use the actual Instagram user ID instead of comment_id
-          },
-          message: { 
-            text: responseMessage 
-          }
-        }),
-      })
-    }
     
     if (!dmResponse.ok) {
       const errorText = await dmResponse.text()
@@ -1113,117 +1073,6 @@ async function replyToCommentWithRetry(account: any, commentId: string, message:
   }
   
   throw new Error(`Failed to reply to comment after ${maxRetries} attempts`)
-}
-
-async function sendPrivateReplyToComment(commentId: string, automation: any, commenterId: string, requestId: string) {
-  console.log(`📩 [${requestId}] Sending private reply for comment ${commentId}`)
-  
-  try {
-    const account = await prisma.account.findFirst({
-      where: {
-        userId: automation.userId,
-        provider: "instagram",
-      },
-    })
-    
-    if (!account?.access_token) {
-      throw new Error("No Instagram access token found")
-    }
-
-    // Get response message for private DM
-    let responseMessage = ""
-    if (automation.actionType === "ai" && automation.aiPrompt) {
-      responseMessage = await generateAIResponse(automation.aiPrompt, automation.message || "Thanks for your comment!")
-    } else if (automation.message) {
-      responseMessage = automation.message
-    } else {
-      throw new Error("No DM message configured")
-    }
-
-    // Send private reply - try both Instagram and Facebook endpoints
-    let dmResponse;
-    
-    // For Basic Display tokens, try Facebook Graph API with different approach
-    if (account.access_token.startsWith('IGAAR') || account.access_token.startsWith('IGQVJ')) {
-      console.log(`🔄 [${requestId}] Using Facebook Graph API with Basic Display token - trying page-based messaging`)
-      // Basic Display tokens might still need to use Facebook Graph API but with proper page context
-      dmResponse = await fetch(`https://graph.facebook.com/v18.0/me/messages`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${account.access_token}`,
-        },
-        body: JSON.stringify({
-          recipient: { 
-            id: commenterId
-          },
-          message: { 
-            text: responseMessage 
-          },
-          messaging_type: "RESPONSE"
-        }),
-      })
-    } else {
-      // Use Facebook Graph API for Business tokens
-      console.log(`🔄 [${requestId}] Using Facebook Graph API for Business token`)
-      dmResponse = await fetch(`https://graph.facebook.com/v18.0/${account.providerAccountId}/messages`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${account.access_token}`,
-        },
-        body: JSON.stringify({
-          recipient: { 
-            comment_id: commentId 
-          },
-          message: { 
-            text: responseMessage 
-          }
-        }),
-      })
-    }
-
-    if (dmResponse.ok) {
-      console.log(`✅ [${requestId}] Private reply sent successfully`)
-    } else {
-      const errorText = await dmResponse.text()
-      console.error(`❌ [${requestId}] Private reply failed:`, errorText)
-      throw new Error(`Private reply failed: ${errorText}`)
-    }
-    
-    // Get private message
-    let privateMessage = ""
-    if (automation.actionType === "ai" && automation.aiPrompt) {
-      privateMessage = await generateAIResponse(automation.aiPrompt, automation.message || "Thanks for your comment!")
-    } else if (automation.message) {
-      privateMessage = automation.message
-    } else {
-      throw new Error("No message configured")
-    }
-    
-    // Send private reply
-    const response = await fetch(`https://graph.facebook.com/v18.0/${account.providerAccountId}/messages`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${account.access_token}`,
-      },
-      body: JSON.stringify({
-        recipient: { comment_id: commentId },
-        message: { text: privateMessage },
-      }),
-    })
-    
-    if (response.ok) {
-      console.log(`✅ [${requestId}] Private reply sent successfully`)
-    } else {
-      const errorText = await response.text()
-      console.error(`❌ [${requestId}] Private reply failed:`, errorText)
-    }
-    
-  } catch (error) {
-    console.error(`💥 [${requestId}] Error sending private reply:`, error)
-  }
 }
 
 async function generateAIResponse(aiPrompt: string, fallbackMessage: string): Promise<string> {
