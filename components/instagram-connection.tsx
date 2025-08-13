@@ -92,49 +92,70 @@ export function InstagramConnection({ onConnectionSuccess, compact = false }: In
     try {
       // Test the access token - try Business API first, then Basic Display API
       console.log('Testing access token...')
+      console.log('Token prefix:', cleanToken.substring(0, 10) + '...')
       
       let response;
       let accountData;
       let tokenType = "unknown";
+      let errorDetails = "";
       
       // First try Business API endpoint
       try {
+        console.log('Attempting Facebook Graph API test...')
         response = await fetch(`https://graph.facebook.com/me?fields=id,username,account_type&access_token=${cleanToken}`)
+        
         if (response.ok) {
           accountData = await response.json()
           tokenType = "business"
           console.log('✅ Business API token detected:', accountData)
+        } else {
+          const errorText = await response.text()
+          console.error('❌ Facebook Graph API test failed:', errorText)
+          errorDetails += `Facebook API error: ${errorText}\n`
         }
       } catch (error) {
-        console.log('Business API test failed, trying Basic Display API...')
+        console.error('❌ Business API test exception:', error)
+        errorDetails += `Facebook API exception: ${error}\n`
       }
       
       // If Business API failed, try Basic Display API
       if (!response || !response.ok) {
-        response = await fetch(`https://graph.instagram.com/me?fields=id,username&access_token=${cleanToken}`)
-        if (response.ok) {
-          accountData = await response.json()
-          tokenType = "basic_display"
-          console.log('✅ Basic Display API token detected:', accountData)
+        try {
+          console.log('Attempting Instagram Graph API test...')
+          response = await fetch(`https://graph.instagram.com/me?fields=id,username&access_token=${cleanToken}`)
+          
+          if (response.ok) {
+            accountData = await response.json()
+            tokenType = "basic_display"
+            console.log('✅ Basic Display API token detected:', accountData)
+          } else {
+            const errorText = await response.text()
+            console.error('❌ Instagram Graph API test failed:', errorText)
+            errorDetails += `Instagram API error: ${errorText}\n`
+          }
+        } catch (error) {
+          console.error('❌ Instagram API test exception:', error)
+          errorDetails += `Instagram API exception: ${error}\n`
         }
       }
       
+      // If both failed, try debug token endpoint
       if (!response || !response.ok) {
-        // Get more detailed error information
-        const errorData = await response.text()
-        console.error('Instagram API error:', errorData)
-        console.error('Response status:', response.status)
-        
         try {
-          const parsedError = JSON.parse(errorData)
-          if (parsedError.error && parsedError.error.message) {
-            throw new Error(`Instagram API Error: ${parsedError.error.message}`)
-          }
-        } catch {
-          // If parsing fails, use the raw error
+          console.log('Attempting debug_token endpoint...')
+          const debugResponse = await fetch(`https://graph.facebook.com/debug_token?input_token=${cleanToken}&access_token=${cleanToken}`)
+          const debugData = await debugResponse.text()
+          console.log('Debug token response:', debugData)
+          errorDetails += `Debug token info: ${debugData}\n`
+        } catch (error) {
+          console.error('❌ Debug token test failed:', error)
         }
         
-        throw new Error(`Invalid access token (Status: ${response.status}). Please check your token and try again.`)
+        // Get more detailed error information
+        console.error('All API tests failed')
+        console.error('Detailed errors:', errorDetails)
+        
+        throw new Error(`Invalid access token (Status: ${response?.status || 'unknown'}). Please check your token and try again. ${errorDetails.substring(0, 100)}...`)
       }
 
       console.log(`Instagram account data (${tokenType}):`, accountData)

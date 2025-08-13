@@ -36,41 +36,95 @@ export async function POST(req: NextRequest) {
     const isLikelyInstagramToken = accessToken.startsWith('IG') || accessToken.startsWith('IGQVJ');
     
     console.log(`🔍 Token appears to be: ${isLikelyFacebookToken ? 'Facebook/Business API' : isLikelyInstagramToken ? 'Instagram Basic Display API' : 'Unknown type'}`);
+    console.log(`🔍 Token prefix: ${accessToken.substring(0, 10)}...`);
     
     // Try the most likely endpoint first based on token format
     let testResponse;
     let isBusiness = false;
+    let allErrors = [];
     
-    if (isLikelyFacebookToken) {
-      // Try Facebook Graph API first for EAF/EAAC tokens
-      console.log('🔄 Testing with Facebook Graph API first...');
-      testResponse = await fetch(`https://graph.facebook.com/me?fields=id,username,account_type&access_token=${accessToken}`);
-      if (testResponse.ok) {
+    // Try Facebook Graph API first
+    try {
+      console.log('🔄 Testing with Facebook Graph API...');
+      const fbResponse = await fetch(`https://graph.facebook.com/me?fields=id,username,account_type&access_token=${accessToken}`);
+      
+      if (fbResponse.ok) {
+        console.log('✅ Facebook Graph API validation successful');
+        testResponse = fbResponse;
         isBusiness = true;
+      } else {
+        const errorText = await fbResponse.text();
+        console.error(`❌ Facebook Graph API validation failed: ${fbResponse.status}`, errorText);
+        allErrors.push(`Facebook API (${fbResponse.status}): ${errorText}`);
+      }
+    } catch (error) {
+      console.error('💥 Facebook Graph API exception:', error);
+      allErrors.push(`Facebook API exception: ${error.message}`);
+    }
+    
+    // If Facebook API failed, try Instagram Graph API
+    if (!testResponse || !testResponse.ok) {
+      try {
+        console.log('🔄 Testing with Instagram Graph API...');
+        const igResponse = await fetch(`https://graph.instagram.com/me?fields=id,username&access_token=${accessToken}`);
+        
+        if (igResponse.ok) {
+          console.log('✅ Instagram Graph API validation successful');
+          testResponse = igResponse;
+        } else {
+          const errorText = await igResponse.text();
+          console.error(`❌ Instagram Graph API validation failed: ${igResponse.status}`, errorText);
+          allErrors.push(`Instagram API (${igResponse.status}): ${errorText}`);
+        }
+      } catch (error) {
+        console.error('💥 Instagram Graph API exception:', error);
+        allErrors.push(`Instagram API exception: ${error.message}`);
       }
     }
     
-    // If that didn't work or it's an Instagram token, try Instagram Graph API
+    // If both failed, try debug token endpoint
     if (!testResponse || !testResponse.ok) {
-      console.log('🔄 Testing with Instagram Graph API...');
-      testResponse = await fetch(`https://graph.instagram.com/me?fields=id,username&access_token=${accessToken}`);
-    }
-    
-    // If both failed, try one more time with debug info
-    if (!testResponse || !testResponse.ok) {
-      console.log('⚠️ Both API tests failed, trying debug endpoint...');
-      testResponse = await fetch(`https://graph.facebook.com/debug_token?input_token=${accessToken}&access_token=${accessToken}`);
-      if (testResponse.ok) {
-        const debugData = await testResponse.json();
-        console.log('🔍 Debug token info:', JSON.stringify(debugData, null, 2));
-        // Try main endpoint again with more info
-        testResponse = await fetch(`https://graph.facebook.com/me?fields=id,username,account_type&access_token=${accessToken}`);
+      try {
+        console.log('⚠️ Both API tests failed, trying debug endpoint...');
+        const debugResponse = await fetch(`https://graph.facebook.com/debug_token?input_token=${accessToken}&access_token=${accessToken}`);
+        
+        if (debugResponse.ok) {
+          const debugData = await debugResponse.json();
+          console.log('🔍 Debug token info:', JSON.stringify(debugData, null, 2));
+          
+          // Try one more time with user token
+          if (debugData?.data?.user_id) {
+            console.log(`🔄 Trying with user_id ${debugData.data.user_id}...`);
+            const userResponse = await fetch(`https://graph.facebook.com/${debugData.data.user_id}?fields=id,name&access_token=${accessToken}`);
+            if (userResponse.ok) {
+              console.log('✅ User endpoint validation successful');
+              testResponse = userResponse;
+              isBusiness = true;
+            } else {
+              const errorText = await userResponse.text();
+              console.error(`❌ User endpoint validation failed: ${userResponse.status}`, errorText);
+              allErrors.push(`User endpoint (${userResponse.status}): ${errorText}`);
+            }
+          }
+        } else {
+          const errorText = await debugResponse.text();
+          console.error(`❌ Debug token validation failed: ${debugResponse.status}`, errorText);
+          allErrors.push(`Debug token (${debugResponse.status}): ${errorText}`);
+        }
+      } catch (error) {
+        console.error('💥 Debug token exception:', error);
+        allErrors.push(`Debug token exception: ${error.message}`);
       }
     }
     
-    if (!testResponse.ok) {
-      console.error("❌ Instagram API validation failed:", testResponse.status, testResponse.statusText)
-      return NextResponse.json({ error: "Invalid access token" }, { status: 400 })
+    // If all validation attempts failed, return detailed error
+    if (!testResponse || !testResponse.ok) {
+      console.error('❌ All validation attempts failed');
+      console.error('📝 Collected errors:', allErrors);
+      return NextResponse.json({ 
+        error: "Invalid access token", 
+        details: allErrors.join(' | ').substring(0, 500) 
+      }, { status: 400 });
     }
 
     const meData = await testResponse.json()
