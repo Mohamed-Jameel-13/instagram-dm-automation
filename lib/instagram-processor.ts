@@ -1003,17 +1003,34 @@ async function sendDMWithRetry(account: any, recipientId: string, message: strin
   
   while (attempts < maxRetries) {
     try {
-      const response = await fetch(`https://graph.facebook.com/v18.0/${account.providerAccountId}/messages`, {
+      // Use appropriate API endpoint based on token type
+      let apiEndpoint;
+      let requestBody;
+      
+      if (account.access_token.startsWith('IGAAR') || account.access_token.startsWith('IGQVJ')) {
+        console.log(`🔄 [${requestId}] Using Instagram Graph API for direct DM`)
+        apiEndpoint = `https://graph.instagram.com/v18.0/me/messages`;
+        requestBody = {
+          recipient: { id: recipientId },
+          message: { text: message }
+        };
+      } else {
+        console.log(`🔄 [${requestId}] Using Facebook Graph API for direct DM`)
+        apiEndpoint = `https://graph.facebook.com/v18.0/${account.providerAccountId}/messages`;
+        requestBody = {
+          recipient: { id: recipientId },
+          message: { text: message },
+          messaging_type: "RESPONSE"
+        };
+      }
+      
+      const response = await fetch(apiEndpoint, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${account.access_token}`,
         },
-        body: JSON.stringify({
-          recipient: { id: recipientId },
-          message: { text: message },
-          messaging_type: "RESPONSE"
-        }),
+        body: JSON.stringify(requestBody),
       })
       
       if (response.ok) {
@@ -1126,10 +1143,11 @@ async function sendPrivateReplyToComment(commentId: string, automation: any, com
     // Send private reply - try both Instagram and Facebook endpoints
     let dmResponse;
     
-    // First try Instagram Graph API (for Basic Display tokens)
+    // For Basic Display tokens, try Facebook Graph API with different approach
     if (account.access_token.startsWith('IGAAR') || account.access_token.startsWith('IGQVJ')) {
-      console.log(`🔄 [${requestId}] Using Instagram Graph API for Basic Display token`)
-      dmResponse = await fetch(`https://graph.instagram.com/v18.0/me/messages`, {
+      console.log(`🔄 [${requestId}] Using Facebook Graph API with Basic Display token - trying page-based messaging`)
+      // Basic Display tokens might still need to use Facebook Graph API but with proper page context
+      dmResponse = await fetch(`https://graph.facebook.com/v18.0/me/messages`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -1137,11 +1155,12 @@ async function sendPrivateReplyToComment(commentId: string, automation: any, com
         },
         body: JSON.stringify({
           recipient: { 
-            comment_id: commentId 
+            id: commenterId
           },
           message: { 
             text: responseMessage 
-          }
+          },
+          messaging_type: "RESPONSE"
         }),
       })
     } else {
