@@ -816,6 +816,7 @@ async function replyToInstagramComment(commentId: string, automation: any, comme
   const processingLockId = `reply_${commentId}_${automation.id}_${commenterId}`;
   
   try {
+    const sanitizeAccessToken = (token: string) => token.trim().replace(/\s+/g, '').replace(/["'`]/g, '');
     // Get response message first to check against global prevention
     let responseMessage = ""
     if (automation.actionType === "ai" && automation.aiPrompt) {
