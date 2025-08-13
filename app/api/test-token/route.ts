@@ -1,147 +1,96 @@
-import { type NextRequest, NextResponse } from "next/server"
+import { NextResponse } from 'next/server';
 
-export async function POST(req: NextRequest) {
-  const requestId = `token_test_${Date.now()}`
-  
+export async function GET(request: Request) {
   try {
-    console.log(`🧪 [${requestId}] Starting token test...`)
+    const url = new URL(request.url);
+    const token = url.searchParams.get('token');
     
-    const body = await req.json()
-    const { accessToken } = body
-    
-    if (!accessToken) {
-      return NextResponse.json({
-        success: false,
-        error: "Access token is required"
-      }, { status: 400 })
+    if (!token) {
+      return NextResponse.json({ error: 'No token provided' }, { status: 400 });
     }
+    
+    console.log('Testing token:', token.substring(0, 10) + '...');
     
     const results = {
-      tokenValid: false,
-      tokenType: "unknown",
-      accountInfo: null,
-      permissions: {
-        canGetProfile: false,
-        canManageMessages: false,
-        canManageComments: false
-      },
-      issues: [],
-      recommendations: []
-    }
+      token_prefix: token.substring(0, 10) + '...',
+      tests: [] as any[],
+    };
     
-    // Test 1: Basic profile access
+    // Test 1: Facebook Graph API /me
     try {
-      console.log(`🧪 [${requestId}] Testing basic profile access...`)
-      const profileResponse = await fetch(
-        `https://graph.facebook.com/me?fields=id,username,account_type&access_token=${accessToken}`
-      )
+      console.log('Test 1: Facebook Graph API /me');
+      const fbResponse = await fetch(`https://graph.facebook.com/me?fields=id,username,account_type&access_token=${token}`);
+      const fbStatus = fbResponse.status;
+      const fbData = await fbResponse.text();
       
-      if (profileResponse.ok) {
-        const profileData = await profileResponse.json()
-        results.tokenValid = true
-        results.accountInfo = profileData
-        results.permissions.canGetProfile = true
-        
-        if (profileData.account_type === "BUSINESS") {
-          results.tokenType = "business_api"
-          console.log(`✅ [${requestId}] Business account detected: @${profileData.username}`)
-        } else {
-          results.tokenType = "basic_display_api"
-          console.log(`⚠️ [${requestId}] Personal account detected: @${profileData.username}`)
-          results.issues.push("Account is not a business account - required for DM automation")
-          results.recommendations.push("Convert Instagram account to Business in Instagram settings")
-        }
-      } else {
-        // Try Basic Display API format
-        const basicResponse = await fetch(
-          `https://graph.facebook.com/me?fields=id,username&access_token=${accessToken}`
-        )
-        
-        if (basicResponse.ok) {
-          const basicData = await basicResponse.json()
-          results.tokenValid = true
-          results.accountInfo = { ...basicData, account_type: "PERSONAL" }
-          results.permissions.canGetProfile = true
-          results.tokenType = "basic_display_api"
-          results.issues.push("This is a Basic Display API token - cannot send DMs")
-          results.recommendations.push("Generate Instagram Business API token instead")
-        } else {
-          results.issues.push("Token is invalid or expired")
-          results.recommendations.push("Generate a new token from Facebook Developer Console")
-        }
-      }
-    } catch (error) {
-      results.issues.push("Failed to test basic profile access")
-      console.error(`❌ [${requestId}] Profile test error:`, error)
+      results.tests.push({
+        name: 'Facebook Graph API /me',
+        success: fbResponse.ok,
+        status: fbStatus,
+        data: fbData,
+      });
+    } catch (error: any) {
+      results.tests.push({
+        name: 'Facebook Graph API /me',
+        success: false,
+        error: error.message,
+      });
     }
     
-    // Test 2: Messaging permissions (only for business tokens)
-    if (results.tokenValid && results.accountInfo) {
-      try {
-        console.log(`🧪 [${requestId}] Testing messaging permissions...`)
-        const conversationResponse = await fetch(
-          `https://graph.facebook.com/v18.0/${results.accountInfo.id}/conversations?access_token=${accessToken}`
-        )
-        
-        if (conversationResponse.ok) {
-          results.permissions.canManageMessages = true
-          console.log(`✅ [${requestId}] Messaging permissions confirmed`)
-        } else {
-          const errorData = await conversationResponse.text()
-          console.log(`❌ [${requestId}] Messaging test failed:`, errorData)
-          results.issues.push("Token missing instagram_manage_messages permission")
-          results.recommendations.push("Add instagram_manage_messages permission in Facebook App")
-        }
-      } catch (error) {
-        console.error(`❌ [${requestId}] Messaging test error:`, error)
-      }
+    // Test 2: Instagram Graph API /me
+    try {
+      console.log('Test 2: Instagram Graph API /me');
+      const igResponse = await fetch(`https://graph.instagram.com/me?fields=id,username&access_token=${token}`);
+      const igStatus = igResponse.status;
+      const igData = await igResponse.text();
       
-      // Test 3: Comments permissions
-      try {
-        console.log(`🧪 [${requestId}] Testing comments permissions...`)
-        const mediaResponse = await fetch(
-          `https://graph.facebook.com/v18.0/${results.accountInfo.id}/media?fields=id&limit=1&access_token=${accessToken}`
-        )
-        
-        if (mediaResponse.ok) {
-          results.permissions.canManageComments = true
-          console.log(`✅ [${requestId}] Comments permissions confirmed`)
-        } else {
-          results.issues.push("Token missing instagram_manage_comments permission")
-          results.recommendations.push("Add instagram_manage_comments permission in Facebook App")
-        }
-      } catch (error) {
-        console.error(`❌ [${requestId}] Comments test error:`, error)
-      }
+      results.tests.push({
+        name: 'Instagram Graph API /me',
+        success: igResponse.ok,
+        status: igStatus,
+        data: igData,
+      });
+    } catch (error: any) {
+      results.tests.push({
+        name: 'Instagram Graph API /me',
+        success: false,
+        error: error.message,
+      });
     }
     
-    // Summary
-    const summary = {
-      readyForAutomation: results.permissions.canManageMessages && results.permissions.canManageComments,
-      tokenType: results.tokenType,
-      issuesCount: results.issues.length
+    // Test 3: Debug Token
+    try {
+      console.log('Test 3: Debug Token');
+      const debugResponse = await fetch(`https://graph.facebook.com/debug_token?input_token=${token}&access_token=${token}`);
+      const debugStatus = debugResponse.status;
+      const debugData = await debugResponse.text();
+      
+      results.tests.push({
+        name: 'Debug Token',
+        success: debugResponse.ok,
+        status: debugStatus,
+        data: debugData,
+      });
+    } catch (error: any) {
+      results.tests.push({
+        name: 'Debug Token',
+        success: false,
+        error: error.message,
+      });
     }
     
-    if (summary.readyForAutomation) {
-      console.log(`✅ [${requestId}] Token is ready for DM automation!`)
-    } else {
-      console.log(`❌ [${requestId}] Token needs fixes: ${results.issues.join(", ")}`)
-    }
+    // Check if any test was successful
+    const anySuccess = results.tests.some(test => test.success);
     
     return NextResponse.json({
-      success: true,
-      requestId,
+      token_valid: anySuccess,
       results,
-      summary
-    })
+    });
     
-  } catch (error) {
-    console.error(`💥 [${requestId}] Token test failed:`, error)
-    
-    return NextResponse.json({
-      success: false,
-      requestId,
-      error: error instanceof Error ? error.message : "Unknown error"
-    }, { status: 500 })
+  } catch (error: any) {
+    return NextResponse.json({ 
+      error: 'Error testing token',
+      message: error.message
+    }, { status: 500 });
   }
-} 
+}
