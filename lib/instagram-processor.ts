@@ -877,77 +877,85 @@ async function replyToInstagramComment(commentId: string, automation: any, comme
     // STEP 1: Attempt to use the official 'private_replies' endpoint.
     // Try Facebook Graph first (Business), then Instagram Graph (IG tokens) with access_token as query param.
     const cleanedToken = sanitizeAccessToken(account.access_token)
+    
+    // Use direct DM endpoint with comment_id as recipient - this is what worked before
     let dmResponse = await fetch(
-      `https://graph.facebook.com/v18.0/${commentId}/private_replies?access_token=${encodeURIComponent(cleanedToken)}`,
+      `https://graph.facebook.com/v18.0/${account.providerAccountId}/messages?access_token=${encodeURIComponent(cleanedToken)}`,
       {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({ message: responseMessage }),
+        body: JSON.stringify({
+          recipient: { comment_id: commentId },
+          message: { text: responseMessage }
+        }),
       }
     );
 
-    // If FB Graph failed and token looks like IG basic token, try Instagram Graph host
-    if (!dmResponse.ok && (cleanedToken.startsWith('IG') || cleanedToken.startsWith('IGQVJ'))) {
+    // If first attempt fails, try Instagram Graph API endpoint
+    if (!dmResponse.ok) {
       dmResponse = await fetch(
-        `https://graph.instagram.com/v18.0/${commentId}/private_replies?access_token=${encodeURIComponent(cleanedToken)}`,
+        `https://graph.instagram.com/v18.0/me/messages?access_token=${encodeURIComponent(cleanedToken)}`,
         {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json'
           },
-          body: JSON.stringify({ message: responseMessage }),
+          body: JSON.stringify({
+            recipient: { comment_id: commentId },
+            message: { text: responseMessage }
+          }),
         }
       );
     }
 
     // If still failing, try form-encoded body variant which some tokens require
     if (!dmResponse.ok) {
+      const formBody = new URLSearchParams();
+      formBody.set('recipient', JSON.stringify({ comment_id: commentId }));
+      formBody.set('message', JSON.stringify({ text: responseMessage }));
+      
       dmResponse = await fetch(
-        `https://graph.facebook.com/v18.0/${commentId}/private_replies?access_token=${encodeURIComponent(cleanedToken)}`,
+        `https://graph.facebook.com/v18.0/${account.providerAccountId}/messages?access_token=${encodeURIComponent(cleanedToken)}`,
         {
           method: 'POST',
           headers: {
             'Content-Type': 'application/x-www-form-urlencoded'
           },
-          body: new URLSearchParams({ message: responseMessage }) as any,
+          body: formBody as any,
         }
       );
     }
 
-    // STEP 2: If the official endpoint fails, log the specific error and try the direct message fallback.
+    // STEP 2: If all DM attempts fail, log the error and try the public comment reply fallback.
     if (!dmResponse.ok) {
       privateReplyError = await dmResponse.text();
-      console.error(`❌ [${requestId}] The official 'private_replies' endpoint failed. Error:`, privateReplyError);
-      console.log(`⚠️ [${requestId}] Fallback: Attempting to send a standard direct message.`);
-
-      // Determine the correct fallback endpoint: send a DM referencing the comment_id to open the messaging window.
-      const fallbackDmEndpoint = `https://graph.facebook.com/v18.0/${account.providerAccountId}/messages?access_token=${encodeURIComponent(cleanedToken)}`;
-      const fallbackRequestBody = {
-        recipient: { comment_id: commentId },
-        message: { text: responseMessage },
-      };
-
-      // Attempt the fallback DM.
-      dmResponse = await fetch(fallbackDmEndpoint, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(fallbackRequestBody),
-      });
-
-      // If fallback DM still fails, try form-encoded variant
-      if (!dmResponse.ok) {
-        const formBody = new URLSearchParams()
-        formBody.set('recipient', JSON.stringify({ comment_id: commentId }))
-        formBody.set('message', JSON.stringify({ text: responseMessage }))
-        dmResponse = await fetch(fallbackDmEndpoint, {
+      console.error(`❌ [${requestId}] All DM attempts failed. Error:`, privateReplyError);
+      
+      // Try one last approach - direct message with id instead of comment_id
+      console.log(`⚠️ [${requestId}] Final attempt: Sending direct message to user ID`);
+      
+      dmResponse = await fetch(
+        `https://graph.facebook.com/v18.0/${account.providerAccountId}/messages?access_token=${encodeURIComponent(cleanedToken)}`,
+        {
           method: 'POST',
-          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-          body: formBody as any,
-        });
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            recipient: { id: commenterId },
+            message: { text: responseMessage },
+            messaging_type: "RESPONSE"
+          }),
+        }
+      );
+      
+      if (dmResponse.ok) {
+        console.log(`✅ [${requestId}] Successfully sent DM using direct user ID method`);
+      } else {
+        const finalError = await dmResponse.text();
+        console.error(`❌ [${requestId}] Final DM attempt failed:`, finalError);
       }
     }
 
