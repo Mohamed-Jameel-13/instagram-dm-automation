@@ -244,10 +244,11 @@ async function handleInstagramMessage(event: any, requestId: string, instagramAc
           }
         }
         
-        if (!isBusinessAccount) {
-          console.log(`❌ [${requestId}] Instagram account ${userInstagramAccount.providerAccountId} doesn't have business permissions`)
-          continue
-        }
+        // DISABLED: Allow basic display tokens to work with DM automations
+        // if (!isBusinessAccount) {
+        //   console.log(`❌ [${requestId}] Instagram account ${userInstagramAccount.providerAccountId} doesn't have business permissions`)
+        //   continue
+        // }
         
         if (automation.actionType === "ai") {
           const conversationStatus = await ConversationManager.isInActiveConversation(
@@ -302,10 +303,11 @@ async function handleInstagramMessage(event: any, requestId: string, instagramAc
           const isBusinessAccount = userInstagramAccount.scope?.includes("instagram_manage_messages") || 
                                     userInstagramAccount.scope?.includes("instagram_manage_comments")
           
-          if (!isBusinessAccount) {
-            console.log(`❌ [${requestId}] Instagram account ${userInstagramAccount.providerAccountId} doesn't have business permissions`)
-            continue
-          }
+          // DISABLED: Allow basic display tokens to work with DM automations
+          // if (!isBusinessAccount) {
+          //   console.log(`❌ [${requestId}] Instagram account ${userInstagramAccount.providerAccountId} doesn't have business permissions`)
+          //   continue
+          // }
           
           // Check keywords
           const keywords = JSON.parse(automation.keywords) as string[]
