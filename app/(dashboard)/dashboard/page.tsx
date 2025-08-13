@@ -121,6 +121,8 @@ export default function DashboardPage() {
                       dataKey="count"
                       stroke="var(--color-count)"
                       strokeWidth={2}
+                      isAnimationActive={false}
+                      animationDuration={0}
                       activeDot={{ r: 8 }}
                     />
                   </LineChart>

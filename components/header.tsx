@@ -2,9 +2,10 @@
 
 import { useEffect, useMemo, useState } from "react"
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
-import { Search } from "lucide-react"
+import { Menu, Search } from "lucide-react"
 import { ThemeSwitcher } from "./theme-switcher"
 import { Input } from "./ui/input"
+import { SidebarTrigger } from "./ui/sidebar"
 
 export function Header() {
   const pathname = usePathname()
@@ -47,6 +48,13 @@ export function Header() {
   return (
     <header className="border-b border-border">
       <div className="flex h-16 items-center px-4 md:px-6">
+        {/* Mobile menu button */}
+        <div className="mr-2 md:hidden">
+          <SidebarTrigger aria-label="Open menu">
+            <Menu className="h-4 w-4" />
+          </SidebarTrigger>
+        </div>
+
         <div className="relative flex-1 max-w-md">
           <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
           <Input
@@ -56,6 +64,8 @@ export function Header() {
             value={query}
             onChange={handleChange}
             onKeyDown={handleKeyDown}
+            // Avoid blocking scroll on mobile while typing
+            onTouchStart={() => {}}
           />
         </div>
         <div className="ml-auto flex items-center space-x-4">
