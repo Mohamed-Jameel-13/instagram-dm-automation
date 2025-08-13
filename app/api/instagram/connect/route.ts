@@ -46,7 +46,8 @@ export async function POST(req: NextRequest) {
     // Try Facebook Graph API first
     try {
       console.log('🔄 Testing with Facebook Graph API...');
-      const fbResponse = await fetch(`https://graph.facebook.com/me?fields=id,username,account_type&access_token=${accessToken}`);
+      // Remove account_type field which is causing the error
+      const fbResponse = await fetch(`https://graph.facebook.com/me?fields=id,username&access_token=${accessToken}`);
       
       if (fbResponse.ok) {
         console.log('✅ Facebook Graph API validation successful');
@@ -150,7 +151,7 @@ export async function POST(req: NextRequest) {
               
               // Try to get account details using the Instagram ID
               const igDetailsResponse = await fetch(
-                `https://graph.facebook.com/v18.0/${instagramAccountId}?fields=id,username,profile_picture_url&access_token=${accessToken}`
+                `https://graph.facebook.com/v18.0/${instagramAccountId}?fields=id,username&access_token=${accessToken}`
               );
               
               if (igDetailsResponse.ok) {
@@ -319,22 +320,25 @@ export async function POST(req: NextRequest) {
         }
       }
       
-      // Test business account verification
+      // Test business account verification - don't use account_type field
       const businessTestResponse = await fetch(
-        `https://graph.facebook.com/v18.0/${resolvedInstagramId}?fields=id,username,account_type&access_token=${accessToken}`
+        `https://graph.facebook.com/v18.0/${resolvedInstagramId}?fields=id,username&access_token=${accessToken}`
       )
       
       if (businessTestResponse.ok) {
         const data = await businessTestResponse.json()
-        if (data.account_type === "BUSINESS") {
-          console.log("✅ Account is verified as Business type")
-          // Business accounts might have additional capabilities
-          if (!detectedCapabilities.includes("instagram_manage_messages")) {
-            console.log("⚠️ Business account but no messaging detected - might be token limitation")
-          }
+        console.log("✅ Account validation successful:", data.username)
+        
+        // Check if we have business capabilities
+        if (detectedCapabilities.includes("instagram_manage_messages") || 
+            detectedCapabilities.includes("instagram_manage_comments")) {
+          console.log("✅ Account has business capabilities")
+          resolvedAccountType = "BUSINESS"
         } else {
-          console.log("ℹ️ Account type:", data.account_type || "PERSONAL")
+          console.log("ℹ️ Account appears to be personal (limited capabilities)")
+          resolvedAccountType = "PERSONAL"
         }
+      }
       }
       
     } catch (error) {
