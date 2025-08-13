@@ -868,6 +868,8 @@ async function replyToInstagramComment(commentId: string, automation: any, comme
     
     console.log(`📩 [${requestId}] Sending private reply to comment ${commentId} from user ${commenterId}`)
     
+    let privateReplyError: string | null = null;
+
     // STEP 1: Attempt to use the official 'private_replies' endpoint.
     // This is the correct method for responding to comments privately and should bypass the 24-hour window.
     let privateReplyEndpoint;
@@ -888,7 +890,7 @@ async function replyToInstagramComment(commentId: string, automation: any, comme
 
     // STEP 2: If the official endpoint fails, log the specific error and try the direct message fallback.
     if (!dmResponse.ok) {
-      const privateReplyError = await dmResponse.text();
+      privateReplyError = await dmResponse.text();
       console.error(`❌ [${requestId}] The official 'private_replies' endpoint failed. Error:`, privateReplyError);
       console.log(`⚠️ [${requestId}] Fallback: Attempting to send a standard direct message.`);
 
@@ -933,7 +935,7 @@ async function replyToInstagramComment(commentId: string, automation: any, comme
       } catch (commentError) {
         console.error(`💥 [${requestId}] All reply methods failed:`, commentError);
         // Combine the errors for a comprehensive message
-        const combinedError = `Private reply failed: ${privateReplyError}. Fallback DM also failed: ${fallbackError}`;
+        const combinedError = `Private reply failed: ${privateReplyError || 'Unknown'}. Fallback DM also failed: ${fallbackError}`;
         throw new Error(combinedError);
       }
     }
