@@ -870,14 +870,9 @@ async function replyToInstagramComment(commentId: string, automation: any, comme
     
     let privateReplyError: string | null = null;
 
-    // STEP 1: Attempt to use the official 'private_replies' endpoint.
+    // STEP 1: Attempt to use the official 'private_replies' endpoint (always Graph API host).
     // This is the correct method for responding to comments privately and should bypass the 24-hour window.
-    let privateReplyEndpoint;
-    if (account.access_token.startsWith('IGAAR') || account.access_token.startsWith('IGQVJ')) {
-      privateReplyEndpoint = `https://graph.instagram.com/v18.0/${commentId}/private_replies`;
-    } else {
-      privateReplyEndpoint = `https://graph.facebook.com/v18.0/${commentId}/private_replies`;
-    }
+    const privateReplyEndpoint = `https://graph.facebook.com/v18.0/${commentId}/private_replies`;
 
     let dmResponse = await fetch(privateReplyEndpoint, {
       method: 'POST',
@@ -894,23 +889,12 @@ async function replyToInstagramComment(commentId: string, automation: any, comme
       console.error(`❌ [${requestId}] The official 'private_replies' endpoint failed. Error:`, privateReplyError);
       console.log(`⚠️ [${requestId}] Fallback: Attempting to send a standard direct message.`);
 
-      // Determine the correct fallback endpoint.
-      let fallbackDmEndpoint;
-      let fallbackRequestBody;
-      if (account.access_token.startsWith('IGAAR') || account.access_token.startsWith('IGQVJ')) {
-        fallbackDmEndpoint = `https://graph.instagram.com/v18.0/me/messages`;
-        fallbackRequestBody = {
-          recipient: { id: commenterId },
-          message: { text: responseMessage },
-        };
-      } else {
-        fallbackDmEndpoint = `https://graph.facebook.com/v18.0/${account.providerAccountId}/messages`;
-        fallbackRequestBody = {
-          recipient: { id: commenterId },
-          message: { text: responseMessage },
-          messaging_type: "RESPONSE",
-        };
-      }
+      // Determine the correct fallback endpoint: send a DM referencing the comment_id to open the messaging window.
+      const fallbackDmEndpoint = `https://graph.facebook.com/v18.0/${account.providerAccountId}/messages`;
+      const fallbackRequestBody = {
+        recipient: { comment_id: commentId },
+        message: { text: responseMessage },
+      };
 
       // Attempt the fallback DM.
       dmResponse = await fetch(fallbackDmEndpoint, {
@@ -982,26 +966,13 @@ async function sendDMWithRetry(account: any, recipientId: string, message: strin
   
   while (attempts < maxRetries) {
     try {
-      // Use appropriate API endpoint based on token type
-      let apiEndpoint;
-      let requestBody;
-      
-      if (account.access_token.startsWith('IGAAR') || account.access_token.startsWith('IGQVJ')) {
-        console.log(`🔄 [${requestId}] Using Instagram Graph API for direct DM`)
-        apiEndpoint = `https://graph.instagram.com/v18.0/me/messages`;
-        requestBody = {
-          recipient: { id: recipientId },
-          message: { text: message }
-        };
-      } else {
-        console.log(`🔄 [${requestId}] Using Facebook Graph API for direct DM`)
-        apiEndpoint = `https://graph.facebook.com/v18.0/${account.providerAccountId}/messages`;
-        requestBody = {
-          recipient: { id: recipientId },
-          message: { text: message },
-          messaging_type: "RESPONSE"
-        };
-      }
+      // Always use the Instagram Graph Messaging endpoint via Facebook Graph API
+      const apiEndpoint = `https://graph.facebook.com/v18.0/${account.providerAccountId}/messages`;
+      const requestBody = {
+        recipient: { id: recipientId },
+        message: { text: message },
+        messaging_type: "RESPONSE"
+      };
       
       const response = await fetch(apiEndpoint, {
         method: 'POST',
