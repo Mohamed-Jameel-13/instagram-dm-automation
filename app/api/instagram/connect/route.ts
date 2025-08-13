@@ -339,7 +339,6 @@ export async function POST(req: NextRequest) {
           resolvedAccountType = "PERSONAL"
         }
       }
-      }
       
     } catch (error) {
       console.log("⚠️ Error testing token capabilities:", error)
