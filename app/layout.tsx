@@ -26,7 +26,7 @@ export default function RootLayout({
       <body className={inter.className}>
         <ErrorBoundary>
           <Providers>
-            <ThemeProvider attribute="class" defaultTheme="dark" enableSystem={false} themes={["light", "dark", "purple"]}>
+            <ThemeProvider attribute="class" defaultTheme="dark" enableSystem={false} enableColorScheme={false} themes={["light", "dark", "purple"]}>
               {children}
               <Toaster />
             </ThemeProvider>
