@@ -173,14 +173,14 @@ async function handleInstagramMessage(event: any, requestId: string, instagramAc
         if (!isBusinessAccount && userInstagramAccount.access_token) {
           console.log(`🔍 [${requestId}] Scope check failed, testing token capabilities dynamically...`)
           try {
-            // Test if token can access business features
-            const testResponse = await fetch(
+            // Test Business API first
+            let testResponse = await fetch(
               `https://graph.facebook.com/v18.0/${userInstagramAccount.providerAccountId}?fields=id,username,account_type&access_token=${userInstagramAccount.access_token}`
             )
             
             if (testResponse.ok) {
               const accountData = await testResponse.json()
-              console.log(`✅ [${requestId}] Token validation successful - account type: ${accountData.account_type}`)
+              console.log(`✅ [${requestId}] Business API token validation successful - account type: ${accountData.account_type}`)
               isBusinessAccount = true // Token works, allow automation
               
               // Update scope in database for future use
@@ -192,7 +192,31 @@ async function handleInstagramMessage(event: any, requestId: string, instagramAc
               })
               console.log(`✅ [${requestId}] Updated account scope in database`)
             } else {
-              console.log(`❌ [${requestId}] Token validation failed: ${testResponse.status}`)
+              console.log(`❌ [${requestId}] Business API failed (${testResponse.status}), trying Basic Display API...`)
+              
+              // Try Basic Display API as fallback
+              testResponse = await fetch(
+                `https://graph.instagram.com/me?fields=id,username&access_token=${userInstagramAccount.access_token}`
+              )
+              
+              if (testResponse.ok) {
+                const accountData = await testResponse.json()
+                console.log(`✅ [${requestId}] Basic Display API token validation successful for user: ${accountData.username}`)
+                
+                // For Basic Display API, we'll allow automation but with limited scope
+                isBusinessAccount = true // Allow automation with basic token
+                
+                // Update scope in database for future use
+                await prisma.account.update({
+                  where: { id: userInstagramAccount.id },
+                  data: { 
+                    scope: "user_profile,user_media,instagram_basic_access" 
+                  }
+                })
+                console.log(`✅ [${requestId}] Updated account scope to basic access in database`)
+              } else {
+                console.log(`❌ [${requestId}] Both Business and Basic Display API validation failed`)
+              }
             }
           } catch (error) {
             console.log(`❌ [${requestId}] Error testing token: ${error}`)
@@ -402,14 +426,14 @@ export async function handleInstagramComment(commentData: any, requestId: string
         if (!isBusinessAccount && userInstagramAccount.access_token) {
           console.log(`🔍 [${requestId}] Scope check failed, testing token capabilities dynamically...`)
           try {
-            // Test if token can access business features
-            const testResponse = await fetch(
+            // Test Business API first
+            let testResponse = await fetch(
               `https://graph.facebook.com/v18.0/${userInstagramAccount.providerAccountId}?fields=id,username,account_type&access_token=${userInstagramAccount.access_token}`
             )
             
             if (testResponse.ok) {
               const accountData = await testResponse.json()
-              console.log(`✅ [${requestId}] Token validation successful - account type: ${accountData.account_type}`)
+              console.log(`✅ [${requestId}] Business API token validation successful - account type: ${accountData.account_type}`)
               isBusinessAccount = true // Token works, allow automation
               
               // Update scope in database for future use
@@ -421,7 +445,31 @@ export async function handleInstagramComment(commentData: any, requestId: string
               })
               console.log(`✅ [${requestId}] Updated account scope in database`)
             } else {
-              console.log(`❌ [${requestId}] Token validation failed: ${testResponse.status}`)
+              console.log(`❌ [${requestId}] Business API failed (${testResponse.status}), trying Basic Display API...`)
+              
+              // Try Basic Display API as fallback
+              testResponse = await fetch(
+                `https://graph.instagram.com/me?fields=id,username&access_token=${userInstagramAccount.access_token}`
+              )
+              
+              if (testResponse.ok) {
+                const accountData = await testResponse.json()
+                console.log(`✅ [${requestId}] Basic Display API token validation successful for user: ${accountData.username}`)
+                
+                // For Basic Display API, we'll allow automation but with limited scope
+                isBusinessAccount = true // Allow automation with basic token
+                
+                // Update scope in database for future use
+                await prisma.account.update({
+                  where: { id: userInstagramAccount.id },
+                  data: { 
+                    scope: "user_profile,user_media,instagram_basic_access" 
+                  }
+                })
+                console.log(`✅ [${requestId}] Updated account scope to basic access in database`)
+              } else {
+                console.log(`❌ [${requestId}] Both Business and Basic Display API validation failed`)
+              }
             }
           } catch (error) {
             console.log(`❌ [${requestId}] Error testing token: ${error}`)
