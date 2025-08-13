@@ -1,6 +1,6 @@
 "use client"
 
-import { Home, Zap, Settings, User, HelpCircle, LogOut, Link as LinkIcon } from "lucide-react"
+import { Home, Zap, User, HelpCircle, LogOut, Link as LinkIcon } from "lucide-react"
 import { usePathname, useRouter } from "next/navigation"
 import Link from "next/link"
 import { signOut } from "firebase/auth"
@@ -32,11 +32,6 @@ const navItems = [
     title: "Integrations",
     href: "/integrations",
     icon: LinkIcon,
-  },
-  {
-    title: "Settings",
-    href: "/settings",
-    icon: Settings,
   },
   {
     title: "Profile",

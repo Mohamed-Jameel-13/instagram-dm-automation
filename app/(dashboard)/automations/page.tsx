@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from "react"
 import Link from "next/link"
-import { useRouter } from "next/navigation"
+import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import { Plus, Zap, Trash2 } from "lucide-react"
 import { useFirebaseAuth } from "@/components/firebase-auth"
 import { Button } from "@/components/ui/button"
@@ -48,8 +48,11 @@ const initialAutomations: Automation[] = []
 
 export default function AutomationsPage() {
   const router = useRouter()
+  const pathname = usePathname()
+  const searchParams = useSearchParams()
   const { user, loading } = useFirebaseAuth()
   const [automations, setAutomations] = useState<Automation[]>([])
+  const [search, setSearch] = useState<string>("")
   const [isInstagramConnected, setIsInstagramConnected] = useState(false)
   const [connectedAccount, setConnectedAccount] = useState<InstagramAccount | null>(null)
   const [isLoading, setIsLoading] = useState(true)
@@ -65,6 +68,11 @@ export default function AutomationsPage() {
       setAutomations(automationsResponse.automations)
     }
   }, [automationsResponse])
+
+  // Sync search param to state
+  useEffect(() => {
+    setSearch(searchParams.get('search') || '')
+  }, [searchParams])
 
   // Check Instagram connection status with cache
   const igStatusUrl = user?.uid ? `/api/instagram/status?userId=${user.uid}` : null
@@ -200,6 +208,15 @@ export default function AutomationsPage() {
     )
   }
 
+  const filtered = automations.filter(a => {
+    const q = search.trim().toLowerCase()
+    if (!q) return true
+    const name = a.name?.toLowerCase() || ''
+    const type = (a.type || a.actionType || '').toLowerCase()
+    const keywords = (a.keywords || []).join(' ').toLowerCase()
+    return name.includes(q) || type.includes(q) || keywords.includes(q)
+  })
+
   return (
     <div className="space-y-8">
       <div className="flex items-center justify-between">
@@ -235,7 +252,7 @@ export default function AutomationsPage() {
       )}
 
       <div className="grid gap-6">
-        {automations.map((automation) => (
+        {filtered.map((automation) => (
           <Card key={automation.id} className={!isInstagramConnected ? "opacity-70" : ""}>
             <CardHeader className="pb-2">
               <div className="flex items-center justify-between">
