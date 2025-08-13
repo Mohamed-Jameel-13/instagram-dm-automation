@@ -18,22 +18,32 @@ export default function DashboardPage() {
   const [totals, setTotals] = useState<Totals | null>(null)
   const [loading, setLoading] = useState(true)
 
-  useEffect(() => {
-    const fetchData = async () => {
-      if (!user?.uid) return
-      try {
-        const res = await fetch(`/api/dashboard?userId=${user.uid}`)
-        if (res.ok) {
-          const data = await res.json()
-          setActivity(data.activity || [])
-          setTotals(data.totals || null)
-        }
-      } catch (e) {
-      } finally {
-        setLoading(false)
+  const fetchData = async () => {
+    if (!user?.uid) return
+    try {
+      const res = await fetch(`/api/dashboard?userId=${user.uid}`)
+      if (res.ok) {
+        const data = await res.json()
+        setActivity(data.activity || [])
+        setTotals(data.totals || null)
       }
+    } catch (e) {
+    } finally {
+      setLoading(false)
     }
+  }
+
+  useEffect(() => {
     fetchData()
+  }, [user?.uid])
+
+  // Lightweight auto-refresh to reflect new activity
+  useEffect(() => {
+    if (!user?.uid) return
+    const id = setInterval(() => {
+      fetchData()
+    }, 15000)
+    return () => clearInterval(id)
   }, [user?.uid])
 
   const displayName = user?.displayName || user?.email || "there"

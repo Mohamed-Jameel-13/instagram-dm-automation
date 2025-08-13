@@ -36,10 +36,17 @@ export async function GET(req: NextRequest) {
     const days = getLast7Days()
     const startDate = new Date(days[0].date)
 
+    // Get automations for this owner and fetch logs by automation IDs (some logs may have stored the Instagram user's ID in userId)
+    const userAutomations = await prisma.automation.findMany({
+      where: { userId },
+      select: { id: true },
+    })
+    const automationIds = userAutomations.map(a => a.id)
+
     const [logs, totalAutomations, activeAutomations, newFollowers, activeConversations] = await Promise.all([
       prisma.automationLog.findMany({
         where: {
-          userId,
+          automationId: { in: automationIds },
           triggeredAt: { gte: startDate },
         },
         select: {
