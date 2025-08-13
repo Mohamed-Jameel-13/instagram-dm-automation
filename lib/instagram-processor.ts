@@ -866,58 +866,75 @@ async function replyToInstagramComment(commentId: string, automation: any, comme
       throw new Error("No Instagram access token found")
     }
     
-    // Use Instagram's Private Reply feature for comments instead of regular DMs
-    // This is specifically designed for responding to comments privately and has different permissions
     console.log(`📩 [${requestId}] Sending private reply to comment ${commentId} from user ${commenterId}`)
     
-    // Use appropriate endpoint for DM based on token type
-    let dmEndpoint;
-    let requestBody;
-
+    // STEP 1: Attempt to use the official 'private_replies' endpoint.
+    // This is the correct method for responding to comments privately and should bypass the 24-hour window.
+    let privateReplyEndpoint;
     if (account.access_token.startsWith('IGAAR') || account.access_token.startsWith('IGQVJ')) {
-      console.log(`🔄 [${requestId}] Using Instagram Graph API for DM`)
-      dmEndpoint = `https://graph.instagram.com/v18.0/me/messages`;
-      requestBody = {
-        recipient: { id: commenterId },
-        message: { text: responseMessage }
-      };
+      privateReplyEndpoint = `https://graph.instagram.com/v18.0/${commentId}/private_replies`;
     } else {
-      console.log(`🔄 [${requestId}] Using Facebook Graph API for DM`)
-      dmEndpoint = `https://graph.facebook.com/v18.0/${account.providerAccountId}/messages`;
-      requestBody = {
-        recipient: { id: commenterId },
-        message: { text: responseMessage },
-        messaging_type: "RESPONSE"
-      };
+      privateReplyEndpoint = `https://graph.facebook.com/v18.0/${commentId}/private_replies`;
     }
-    
-    let dmResponse = await fetch(dmEndpoint, {
+
+    let dmResponse = await fetch(privateReplyEndpoint, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${account.access_token}`,
       },
-      body: JSON.stringify(requestBody),
-    })
-    
+      body: JSON.stringify({ message: responseMessage }),
+    });
+
+    // STEP 2: If the official endpoint fails, log the specific error and try the direct message fallback.
     if (!dmResponse.ok) {
-      const errorText = await dmResponse.text()
-      console.error(`❌ [${requestId}] Private reply failed:`, errorText)
-      
-      // Check if it's a messaging window restriction
-      if (errorText.includes("outside of allowed window") || errorText.includes("2534022")) {
-        console.log(`⏰ [${requestId}] DM failed due to messaging window restriction - falling back to comment reply immediately`)
+      const privateReplyError = await dmResponse.text();
+      console.error(`❌ [${requestId}] The official 'private_replies' endpoint failed. Error:`, privateReplyError);
+      console.log(`⚠️ [${requestId}] Fallback: Attempting to send a standard direct message.`);
+
+      // Determine the correct fallback endpoint.
+      let fallbackDmEndpoint;
+      let fallbackRequestBody;
+      if (account.access_token.startsWith('IGAAR') || account.access_token.startsWith('IGQVJ')) {
+        fallbackDmEndpoint = `https://graph.instagram.com/v18.0/me/messages`;
+        fallbackRequestBody = {
+          recipient: { id: commenterId },
+          message: { text: responseMessage },
+        };
+      } else {
+        fallbackDmEndpoint = `https://graph.facebook.com/v18.0/${account.providerAccountId}/messages`;
+        fallbackRequestBody = {
+          recipient: { id: commenterId },
+          message: { text: responseMessage },
+          messaging_type: "RESPONSE",
+        };
       }
-      
-      // Final fallback: Try public comment reply if both private methods fail
-      console.log(`💬 [${requestId}] Trying public comment reply as final fallback`)
+
+      // Attempt the fallback DM.
+      dmResponse = await fetch(fallbackDmEndpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${account.access_token}`,
+        },
+        body: JSON.stringify(fallbackRequestBody),
+      });
+    }
+
+    // STEP 3: If both DM methods fail, log the final error and fall back to a public comment.
+    if (!dmResponse.ok) {
+      const fallbackError = await dmResponse.text();
+      console.error(`❌ [${requestId}] All reply methods failed. Final error:`, fallbackError);
+      console.log(`💬 [${requestId}] Trying public comment reply as final fallback`);
       try {
-        await replyToCommentWithRetry(account, commentId, responseMessage, requestId)
-        console.log(`✅ [${requestId}] Public comment reply sent successfully as fallback`)
-        return // Success with public reply, exit function
+        await replyToCommentWithRetry(account, commentId, responseMessage, requestId);
+        console.log(`✅ [${requestId}] Public comment reply sent successfully as fallback`);
+        return; // Success with public reply, exit function
       } catch (commentError) {
-        console.error(`💥 [${requestId}] All reply methods failed:`, commentError)
-        throw new Error(`All reply methods failed. Private reply: ${errorText}`)
+        console.error(`💥 [${requestId}] All reply methods failed:`, commentError);
+        // Combine the errors for a comprehensive message
+        const combinedError = `Private reply failed: ${privateReplyError}. Fallback DM also failed: ${fallbackError}`;
+        throw new Error(combinedError);
       }
     }
     
