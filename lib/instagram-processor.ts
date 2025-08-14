@@ -354,7 +354,8 @@ async function handleInstagramMessage(event: any, requestId: string, instagramAc
             }
             
             await sendInstagramMessage(senderId, automation, recipientId, requestId, userInstagramAccount)
-            await logAutomationTrigger(automation.id, "dm", messageText, senderId)
+            console.log(`📊 [${requestId}] Logging automation trigger: ${automation.id}`)
+    await logAutomationTrigger(automation.id, "dm", messageText, senderId)
             break
           } else {
             console.log(`❌ [${requestId}] No keyword match for automation ${automation.id}`)
@@ -818,6 +819,7 @@ async function sendInstagramMessage(
     const responseTime = Date.now() - startTime
     
     // Log DM analytics
+    console.log(`📊 [${requestId}] Logging DM analytics: automationId=${automation.id}, userId=${automation.userId}, responseTime=${responseTime}ms`)
     await AnalyticsLogger.logDmSent(
       automation.id,
       automation.userId,
@@ -840,6 +842,7 @@ async function sendInstagramMessage(
     }
     
     // Update daily metrics
+    console.log(`📊 [${requestId}] Updating daily metrics for user ${automation.userId}`)
     await AnalyticsLogger.updateDailyMetrics(
       automation.userId,
       responseTime,
