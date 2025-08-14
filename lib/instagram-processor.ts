@@ -664,8 +664,7 @@ export async function handleInstagramComment(commentData: any, requestId: string
             console.log(`✅ [${requestId}] REAL USER BYPASS: Skipping processing lock for real Instagram user`)
           }
           
-          // Track comment analytics
-          const postId = commentData.media?.id || commentData.media_id || 'unknown'
+          // Track comment analytics (no response time for initial comment)
           await AnalyticsLogger.updatePostAnalytics(
             postId || null,
             automation.userId,
@@ -715,17 +714,6 @@ export async function handleInstagramComment(commentData: any, requestId: string
               }
             }
             
-            // Handle follow_comment trigger
-            if (automation.triggerType === "follow_comment") {
-              const isNewFollower = await followerTracker.isNewFollower(automation.userId, commenterId)
-              if (!isNewFollower) continue
-              
-              await followerTracker.markFollowerCommented(automation.userId, commenterId)
-              await logAutomationTrigger(automation.id, "follow_comment", rawText, commenterId, commenterUsername, true)
-            } else {
-              await logAutomationTrigger(automation.id, "comment", rawText, commenterId, commenterUsername, false)
-            }
-            
             const processStartTime = Date.now()
             
             // Check if this is a DM automation triggered by comment
@@ -740,6 +728,43 @@ export async function handleInstagramComment(commentData: any, requestId: string
             }
             
             const processingTime = Date.now() - processStartTime
+            
+            // Handle follow_comment trigger with enhanced logging
+            if (automation.triggerType === "follow_comment") {
+              const isNewFollower = await followerTracker.isNewFollower(automation.userId, commenterId)
+              if (!isNewFollower) continue
+              
+              await followerTracker.markFollowerCommented(automation.userId, commenterId)
+              await logAutomationTrigger(
+                automation.id, 
+                "follow_comment", 
+                rawText, 
+                commenterId, 
+                commenterUsername, 
+                true,
+                postId,
+                commentId,
+                processingTime,
+                'success',
+                undefined,
+                automation.actionType === 'dm' ? 'dm' : 'comment_reply'
+              )
+            } else {
+              await logAutomationTrigger(
+                automation.id, 
+                "comment", 
+                rawText, 
+                commenterId, 
+                commenterUsername, 
+                false,
+                postId,
+                commentId,
+                processingTime,
+                'success',
+                undefined,
+                automation.actionType === 'dm' ? 'dm' : 'comment_reply'
+              )
+            }
             
             // ABSOLUTE FINAL FIX: Return immediately after processing ANY automation
             // This ensures NO OTHER AUTOMATIONS can process the same comment
