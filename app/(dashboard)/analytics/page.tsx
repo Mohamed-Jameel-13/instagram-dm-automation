@@ -271,9 +271,6 @@ export default function AnalyticsPage() {
     dailyMetrics: overview?.dailyMetrics || []
   }
 
-  // Check if there's any meaningful data
-  const hasData = safeOverview.summary.totalTriggers > 0 || safePostAnalytics.summary.totalPosts > 0 || safeAutomationAnalytics.summary.totalAutomations > 0
-
   const safePostAnalytics = {
     posts: postAnalytics?.posts || [],
     summary: {
@@ -297,6 +294,9 @@ export default function AnalyticsPage() {
       topPerformer: automationAnalytics?.summary?.topPerformer || 'None'
     }
   }
+
+  // Check if there's any meaningful data (after all safe objects are declared)
+  const hasData = safeOverview.summary.totalTriggers > 0 || safePostAnalytics.summary.totalPosts > 0 || safeAutomationAnalytics.summary.totalAutomations > 0
 
   const COLORS = ['#8884d8', '#82ca9d', '#ffc658', '#ff7300', '#0088fe']
 
