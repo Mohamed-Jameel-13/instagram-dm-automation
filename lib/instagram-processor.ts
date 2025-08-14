@@ -727,7 +727,18 @@ export async function handleInstagramComment(commentData: any, requestId: string
             }
             
             const processStartTime = Date.now()
-            await replyToInstagramComment(commentId, automation, commenterId, requestId, postId)
+            
+            // Check if this is a DM automation triggered by comment
+            if (automation.actionType === 'dm' || automation.message) {
+              console.log(`📩 [${requestId}] Comment triggered DM automation - sending DM to ${commenterId}`)
+              // Get user's Instagram account for DM sending
+              const userInstagramAccount = accountMap.get(automation.userId)
+              await sendInstagramMessage(commenterId, automation, instagramAccountId, requestId, userInstagramAccount, postId)
+            } else {
+              console.log(`💬 [${requestId}] Comment triggered reply automation - sending comment reply`)
+              await replyToInstagramComment(commentId, automation, commenterId, requestId, postId)
+            }
+            
             const processingTime = Date.now() - processStartTime
             
             // ABSOLUTE FINAL FIX: Return immediately after processing ANY automation
@@ -931,6 +942,7 @@ async function sendInstagramAIMessage(recipientId: string, automation: any, page
 }
 
 async function replyToInstagramComment(commentId: string, automation: any, commenterId: string, requestId: string, postId?: string) {
+  const processStartTime = Date.now()
   console.log(`💭 [${requestId}] Replying to comment ${commentId}`)
   
   // REAL USER BYPASS: Allow real Instagram users to bypass duplicate prevention
@@ -1116,13 +1128,24 @@ async function replyToInstagramComment(commentId: string, automation: any, comme
     console.log(`📋 [${requestId}] Message details:`, responseData)
     
     // Log analytics for comment reply
+    const responseTime = Date.now() - processStartTime
+    console.log(`📊 [${requestId}] Logging comment reply analytics: automationId=${automation.id}, responseTime=${responseTime}ms`)
+    
     if (postId) {
       await AnalyticsLogger.updatePostAnalytics(
-        postId || null,
+        postId,
         automation.userId,
-        'comment_replied'
+        'comment_replied',
+        responseTime
       )
     }
+    
+    // Update daily metrics for comment reply
+    await AnalyticsLogger.updateDailyMetrics(
+      automation.userId,
+      responseTime,
+      'success'
+    )
     
     // MARK MESSAGE AS SENT in NUCLEAR prevention system (ABSOLUTE MOST AGGRESSIVE)
     NuclearDuplicatePrevention.markMessageSent(commentId, commenterId, automation.id)
