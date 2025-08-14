@@ -347,7 +347,7 @@ export default function AnalyticsPage() {
       )}
 
       {/* Overview Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Total DMs Sent</CardTitle>
@@ -359,6 +359,32 @@ export default function AnalyticsPage() {
               <Badge variant={safeOverview.summary.successRate > 90 ? 'default' : 'secondary'}>
                 {safeOverview.summary.successRate}% success
               </Badge>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">AI DMs Sent</CardTitle>
+            <Bot className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{safeOverview.summary.totalAiDms || 0}</div>
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Badge variant="outline">AI-generated</Badge>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Regular DMs</CardTitle>
+            <MessageCircle className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{safeOverview.summary.totalRegularDms || 0}</div>
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Badge variant="outline">Template-based</Badge>
             </div>
           </CardContent>
         </Card>
@@ -525,6 +551,53 @@ export default function AnalyticsPage() {
                   </BarChart>
                 </ResponsiveContainer>
               </div>
+              
+              {/* Post Thumbnails Row */}
+              {safePostAnalytics.summary.topPosts.length > 0 && (
+                <div className="mt-4 pt-4 border-t">
+                  <p className="text-sm font-medium mb-3 text-center">Post Previews</p>
+                  <div className="flex justify-center gap-6">
+                    {safePostAnalytics.summary.topPosts.slice(0, 3).map((post, index) => (
+                      <div key={post.postId} className="flex flex-col items-center text-center">
+                        {/* Circular Thumbnail */}
+                        <div className="relative group">
+                          {post.postThumbnail ? (
+                            <img 
+                              src={post.postThumbnail} 
+                              alt={`Post ${index + 1}`}
+                              className="w-16 h-16 rounded-full object-cover border-3 border-primary shadow-lg hover:shadow-xl transition-shadow cursor-pointer"
+                              title={post.postCaption || `Post ${index + 1}`}
+                            />
+                          ) : (
+                            <div className="w-16 h-16 rounded-full bg-muted border-3 border-primary shadow-lg flex items-center justify-center">
+                              <Image className="w-8 h-8 text-muted-foreground" />
+                            </div>
+                          )}
+                          {/* Post Type Badge */}
+                          {post.postType && (
+                            <div className="absolute -top-1 -right-1 bg-primary text-primary-foreground text-xs px-1.5 py-0.5 rounded-full text-[10px] font-medium">
+                              {post.postType === 'CAROUSEL_ALBUM' ? 'ALBUM' : post.postType}
+                            </div>
+                          )}
+                        </div>
+                        
+                        {/* Post Info */}
+                        <div className="mt-2 max-w-[100px]">
+                          <div className="text-xs font-medium truncate">
+                            {post.postCaption ? post.postCaption.substring(0, 20) + '...' : `Post ${index + 1}`}
+                          </div>
+                          <div className="text-xs text-muted-foreground mt-1">
+                            {post.dmsSent} DMs
+                            {post.aiDmsSent > 0 && (
+                              <span className="text-blue-600 ml-1">({post.aiDmsSent} AI)</span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </CardContent>
           </Card>
 
