@@ -81,13 +81,27 @@ export async function GET(req: NextRequest) {
       })
     ])
 
-    // Calculate aggregated metrics
+    // Calculate aggregated metrics with AI/Regular separation
     const totalTriggers = performanceMetrics.reduce((sum, metric) => sum + metric.totalTriggers, 0)
     const successfulDms = performanceMetrics.reduce((sum, metric) => sum + metric.successfulDms, 0)
+    const successfulAiDms = performanceMetrics.reduce((sum, metric) => sum + (metric.successfulAiDms || 0), 0)
+    const successfulRegularDms = performanceMetrics.reduce((sum, metric) => sum + (metric.successfulRegularDms || 0), 0)
     const failedDms = performanceMetrics.reduce((sum, metric) => sum + metric.failedDms, 0)
     
     const avgResponseTime = performanceMetrics.length > 0 
       ? performanceMetrics.reduce((sum, metric) => sum + metric.avgResponseTime, 0) / performanceMetrics.length
+      : 0
+      
+    // Calculate separate response times
+    const aiMetricsWithTime = performanceMetrics.filter(m => m.avgAiResponseTime)
+    const regularMetricsWithTime = performanceMetrics.filter(m => m.avgRegularResponseTime)
+    
+    const avgAiResponseTime = aiMetricsWithTime.length > 0 
+      ? aiMetricsWithTime.reduce((sum, metric) => sum + metric.avgAiResponseTime, 0) / aiMetricsWithTime.length
+      : 0
+      
+    const avgRegularResponseTime = regularMetricsWithTime.length > 0 
+      ? regularMetricsWithTime.reduce((sum, metric) => sum + metric.avgRegularResponseTime, 0) / regularMetricsWithTime.length
       : 0
 
     const fastestResponse = Math.min(...performanceMetrics.map(m => m.fastestResponse).filter(r => r !== null))
@@ -101,6 +115,8 @@ export async function GET(req: NextRequest) {
         totalDms,
         totalAiDms,
         totalRegularDms,
+        successfulAiDms,
+        successfulRegularDms,
         totalComments,
         totalAutomations,
         totalTriggers,
@@ -108,6 +124,8 @@ export async function GET(req: NextRequest) {
         failedDms,
         successRate: Math.round(successRate * 100) / 100,
         avgResponseTime: Math.round(avgResponseTime),
+        avgAiResponseTime: Math.round(avgAiResponseTime),
+        avgRegularResponseTime: Math.round(avgRegularResponseTime),
         fastestResponse: isFinite(fastestResponse) ? fastestResponse : null,
         slowestResponse: isFinite(slowestResponse) ? slowestResponse : null
       },

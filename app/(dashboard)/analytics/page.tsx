@@ -391,7 +391,7 @@ export default function AnalyticsPage() {
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Avg Response Time</CardTitle>
+            <CardTitle className="text-sm font-medium">Overall Avg Time</CardTitle>
             <Clock className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
@@ -401,10 +401,13 @@ export default function AnalyticsPage() {
                 : `${(safeOverview.summary.avgResponseTime / 1000).toFixed(1)}s`
               }
             </div>
-            <div className="text-sm text-muted-foreground">
-              {safeOverview.summary.fastestResponse > 0 && (
-                <span>Fastest: {safeOverview.summary.fastestResponse}ms</span>
-              )}
+            <div className="flex flex-col gap-1 mt-2">
+              <div className="bg-purple-50 border border-purple-200 px-2 py-1 rounded text-xs">
+                <span className="text-purple-700 font-medium">🤖 AI: {safeOverview.summary.avgAiResponseTime || 0}ms</span>
+              </div>
+              <div className="bg-blue-50 border border-blue-200 px-2 py-1 rounded text-xs">
+                <span className="text-blue-700 font-medium">💬 Regular: {safeOverview.summary.avgRegularResponseTime || 0}ms</span>
+              </div>
             </div>
           </CardContent>
         </Card>
@@ -559,7 +562,7 @@ export default function AnalyticsPage() {
                   <div className="flex justify-center gap-6">
                     {safePostAnalytics.summary.topPosts.slice(0, 3).map((post, index) => (
                       <div key={post.postId} className="flex flex-col items-center text-center">
-                        {/* Circular Thumbnail */}
+                        {/* Circular Thumbnail with Enhanced Fallback */}
                         <div className="relative group">
                           {post.postThumbnail ? (
                             <img 
@@ -567,12 +570,27 @@ export default function AnalyticsPage() {
                               alt={`Post ${index + 1}`}
                               className="w-16 h-16 rounded-full object-cover border-3 border-primary shadow-lg hover:shadow-xl transition-shadow cursor-pointer"
                               title={post.postCaption || `Post ${index + 1}`}
+                              onError={(e) => {
+                                e.currentTarget.style.display = 'none'
+                                e.currentTarget.nextSibling.style.display = 'flex'
+                              }}
                             />
-                          ) : (
-                            <div className="w-16 h-16 rounded-full bg-muted border-3 border-primary shadow-lg flex items-center justify-center">
-                              <Image className="w-8 h-8 text-muted-foreground" />
+                          ) : null}
+                          
+                          {/* Enhanced Fallback with Post Info */}
+                          <div 
+                            className="w-16 h-16 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 border-3 border-primary shadow-lg flex flex-col items-center justify-center text-white font-bold text-xs"
+                            style={{ display: post.postThumbnail ? 'none' : 'flex' }}
+                          >
+                            <div className="text-[10px] opacity-80">
+                              {post.postType === 'REELS' ? '🎬' : 
+                               post.postType === 'VIDEO' ? '🎥' : 
+                               post.postType === 'CAROUSEL_ALBUM' ? '📸' : '🖼️'}
                             </div>
-                          )}
+                            <div className="text-[8px] font-bold">
+                              #{index + 1}
+                            </div>
+                          </div>
                           {/* Post Type Badge */}
                           {post.postType && (
                             <div className="absolute -top-1 -right-1 bg-primary text-primary-foreground text-xs px-1.5 py-0.5 rounded-full text-[10px] font-medium">
@@ -581,16 +599,29 @@ export default function AnalyticsPage() {
                           )}
                         </div>
                         
-                        {/* Post Info */}
-                        <div className="mt-2 max-w-[100px]">
-                          <div className="text-xs font-medium truncate">
-                            {post.postCaption ? post.postCaption.substring(0, 20) + '...' : `Post ${index + 1}`}
+                        {/* Enhanced Post Info */}
+                        <div className="mt-2 max-w-[120px] text-center">
+                          <div className="text-xs font-medium truncate mb-1">
+                            {post.postCaption ? 
+                              post.postCaption.substring(0, 25) + (post.postCaption.length > 25 ? '...' : '') : 
+                              `${post.postType || 'Post'} #${index + 1}`}
                           </div>
-                          <div className="text-xs text-muted-foreground mt-1">
-                            {post.dmsSent} DMs
+                          
+                          {/* Stats Row */}
+                          <div className="flex justify-center gap-2 text-[10px] mb-1">
+                            <div className="bg-blue-100 text-blue-800 px-1.5 py-0.5 rounded-full">
+                              {post.dmsSent} DMs
+                            </div>
                             {post.aiDmsSent > 0 && (
-                              <span className="text-blue-600 ml-1">({post.aiDmsSent} AI)</span>
+                              <div className="bg-purple-100 text-purple-800 px-1.5 py-0.5 rounded-full">
+                                {post.aiDmsSent} AI
+                              </div>
                             )}
+                          </div>
+                          
+                          {/* Post ID for Reference */}
+                          <div className="text-[9px] text-muted-foreground font-mono">
+                            ...{post.postId.slice(-8)}
                           </div>
                         </div>
                       </div>

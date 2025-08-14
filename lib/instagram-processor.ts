@@ -902,7 +902,8 @@ async function sendInstagramMessage(
     await AnalyticsLogger.updateDailyMetrics(
       automation.userId,
       responseTime,
-      'success'
+      'success',
+      dmType
     )
     
     console.log(`✅ [${requestId}] DM sent successfully in ${responseTime}ms`)
@@ -928,7 +929,8 @@ async function sendInstagramMessage(
     await AnalyticsLogger.updateDailyMetrics(
       automation.userId,
       responseTime,
-      'failed'
+      'failed',
+      dmType
     )
     
     throw error
@@ -1480,27 +1482,55 @@ class AnalyticsLogger {
       }
       
       // Fetch post details from Instagram API
-      const response = await fetch(
-        `https://graph.instagram.com/v18.0/${postId}?fields=id,media_type,media_url,thumbnail_url,caption,permalink&access_token=${account.access_token}`,
-        { timeout: 5000 }
-      )
+      const apiUrl = `https://graph.instagram.com/v18.0/${postId}?fields=id,media_type,media_url,thumbnail_url,caption,permalink&access_token=${account.access_token}`
+      console.log(`🖼️ Fetching post details for ${postId}...`)
+      
+      const response = await fetch(apiUrl, { 
+        timeout: 10000,
+        headers: {
+          'User-Agent': 'InstagramBot/1.0'
+        }
+      })
       
       if (response.ok) {
         const postData = await response.json()
-        
-        // Update PostAnalytics with enriched data
-        await prisma.postAnalytics.updateMany({
-          where: { postId },
-          data: {
-            postThumbnail: postData.thumbnail_url || postData.media_url || null,
-            postCaption: postData.caption ? postData.caption.substring(0, 100) : null,
-            postType: postData.media_type || null
-          }
+        console.log(`🖼️ Post data received:`, {
+          id: postData.id,
+          media_type: postData.media_type,
+          has_media_url: !!postData.media_url,
+          has_thumbnail_url: !!postData.thumbnail_url,
+          caption_length: postData.caption?.length || 0
         })
         
-        console.log(`🖼️ Enriched post analytics for ${postId} with thumbnail and caption`)
+        // Update PostAnalytics with enriched data
+        const updateData = {
+          postThumbnail: postData.thumbnail_url || postData.media_url || null,
+          postCaption: postData.caption ? postData.caption.substring(0, 100) : null,
+          postType: postData.media_type || null
+        }
+        
+        await prisma.postAnalytics.updateMany({
+          where: { postId },
+          data: updateData
+        })
+        
+        console.log(`✅ Enriched post analytics for ${postId}:`, updateData)
       } else {
-        console.log(`Failed to fetch post details for ${postId}: ${response.status}`)
+        const errorText = await response.text()
+        console.log(`❌ Failed to fetch post details for ${postId}: ${response.status} - ${errorText}`)
+        
+        // Fallback: Create a recognizable identifier from post ID
+        const fallbackData = {
+          postCaption: `Post ...${postId.slice(-8)}`,
+          postType: 'Unknown'
+        }
+        
+        await prisma.postAnalytics.updateMany({
+          where: { postId },
+          data: fallbackData
+        })
+        
+        console.log(`🔄 Added fallback data for ${postId}:`, fallbackData)
       }
     } catch (error) {
       console.error(`Error enriching post analytics for ${postId}:`, error)
@@ -1608,7 +1638,8 @@ class AnalyticsLogger {
   static async updateDailyMetrics(
     userId: string,
     responseTime: number,
-    status: 'success' | 'failed'
+    status: 'success' | 'failed',
+    dmType: 'ai_dm' | 'dm' = 'dm'
   ) {
     try {
       console.log(`📊 Daily Metrics: ${userId} - ${status} - ${responseTime}ms`)
@@ -1630,6 +1661,26 @@ class AnalyticsLogger {
         const successfulDms = status === 'success' ? existing.successfulDms + 1 : existing.successfulDms
         const failedDms = status === 'failed' ? existing.failedDms + 1 : existing.failedDms
         
+        // Calculate separate response times for AI vs Regular DMs
+        let successfulAiDms = existing.successfulAiDms || 0
+        let successfulRegularDms = existing.successfulRegularDms || 0
+        let avgAiResponseTime = existing.avgAiResponseTime
+        let avgRegularResponseTime = existing.avgRegularResponseTime
+        
+        if (status === 'success') {
+          if (dmType === 'ai_dm') {
+            successfulAiDms += 1
+            avgAiResponseTime = avgAiResponseTime ? 
+              ((avgAiResponseTime * (successfulAiDms - 1)) + responseTime) / successfulAiDms :
+              responseTime
+          } else {
+            successfulRegularDms += 1
+            avgRegularResponseTime = avgRegularResponseTime ? 
+              ((avgRegularResponseTime * (successfulRegularDms - 1)) + responseTime) / successfulRegularDms :
+              responseTime
+          }
+        }
+        
         const newAvgResponseTime = (
           (existing.avgResponseTime * existing.totalTriggers + responseTime) / totalTriggers
         )
@@ -1644,8 +1695,12 @@ class AnalyticsLogger {
           data: {
             totalTriggers,
             successfulDms,
+            successfulAiDms,
+            successfulRegularDms,
             failedDms,
             avgResponseTime: newAvgResponseTime,
+            avgAiResponseTime,
+            avgRegularResponseTime,
             fastestResponse: existing.fastestResponse ? 
               Math.min(existing.fastestResponse, responseTime) : responseTime,
             slowestResponse: existing.slowestResponse ? 
@@ -1660,8 +1715,12 @@ class AnalyticsLogger {
             date: today,
             totalTriggers: 1,
             successfulDms: status === 'success' ? 1 : 0,
+            successfulAiDms: status === 'success' && dmType === 'ai_dm' ? 1 : 0,
+            successfulRegularDms: status === 'success' && dmType === 'dm' ? 1 : 0,
             failedDms: status === 'failed' ? 1 : 0,
             avgResponseTime: responseTime,
+            avgAiResponseTime: dmType === 'ai_dm' ? responseTime : null,
+            avgRegularResponseTime: dmType === 'dm' ? responseTime : null,
             fastestResponse: responseTime,
             slowestResponse: responseTime,
             uniqueRecipients: 1

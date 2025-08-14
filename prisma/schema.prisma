@@ -187,18 +187,22 @@ model PostAnalytics {
 }
 
 model PerformanceMetrics {
-  id               String   @id @default(cuid())
-  userId           String
-  date             DateTime // Date for daily aggregation
-  totalTriggers    Int      @default(0)
-  successfulDms    Int      @default(0)
-  failedDms        Int      @default(0)
-  avgResponseTime  Float    @default(0)
-  fastestResponse  Int?     // Fastest response in ms
-  slowestResponse  Int?     // Slowest response in ms
-  uniqueRecipients Int      @default(0)
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  id                     String   @id @default(cuid())
+  userId                 String
+  date                   DateTime // Date for daily aggregation
+  totalTriggers          Int      @default(0)
+  successfulDms          Int      @default(0)
+  successfulAiDms        Int      @default(0)  // AI DMs sent successfully
+  successfulRegularDms   Int      @default(0)  // Regular DMs sent successfully
+  failedDms              Int      @default(0)
+  avgResponseTime        Float    @default(0)  // Overall average
+  avgAiResponseTime      Float?   // Average for AI DMs only
+  avgRegularResponseTime Float?   // Average for Regular DMs only
+  fastestResponse        Int?     // Fastest response in ms
+  slowestResponse        Int?     // Slowest response in ms
+  uniqueRecipients       Int      @default(0)
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
   
   @@unique([userId, date])
   @@index([userId, date])
