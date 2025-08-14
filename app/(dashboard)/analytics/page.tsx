@@ -193,6 +193,7 @@ export default function AnalyticsPage() {
   const [automationAnalytics, setAutomationAnalytics] = useState<AutomationAnalytics | null>(null)
   const [loading, setLoading] = useState(true)
   const [refreshingPosts, setRefreshingPosts] = useState(false)
+  const [backfillingMetrics, setBackfillingMetrics] = useState(false)
   const [timeRange, setTimeRange] = useState('7')
 
   useEffect(() => {
@@ -301,6 +302,37 @@ export default function AnalyticsPage() {
       alert('Failed to refresh post data. Please try again.')
     } finally {
       setRefreshingPosts(false)
+    }
+  }
+
+  const backfillMetrics = async () => {
+    try {
+      setBackfillingMetrics(true)
+      console.log('🔄 Backfilling performance metrics...')
+      
+      const response = await fetch(`/api/analytics/backfill-metrics?days=${timeRange}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      })
+      
+      const result = await response.json()
+      
+      if (result.success) {
+        console.log(`✅ Backfilled ${result.updated} metrics`)
+        // Refetch analytics data to show updated information
+        await fetchAnalytics()
+        alert(`Successfully backfilled ${result.updated} performance metrics with response times!`)
+      } else {
+        console.error('Failed to backfill metrics:', result.error)
+        alert(`Error backfilling metrics: ${result.error}`)
+      }
+    } catch (error) {
+      console.error('Error backfilling metrics:', error)
+      alert('Failed to backfill metrics. Please try again.')
+    } finally {
+      setBackfillingMetrics(false)
     }
   }
 
@@ -472,9 +504,11 @@ export default function AnalyticsPage() {
             <div className="text-2xl font-bold text-purple-700">
               {safeOverview.summary.avgAiResponseTime > 0
                 ? safeOverview.summary.avgAiResponseTime < 1000 
-                  ? `${safeOverview.summary.avgAiResponseTime}ms`
+                  ? `${Math.round(safeOverview.summary.avgAiResponseTime)}ms`
                   : `${(safeOverview.summary.avgAiResponseTime / 1000).toFixed(1)}s`
-                : 'No data'
+                : safeOverview.summary.totalAiDms > 0 
+                  ? 'Calculating...'
+                  : 'No AI DMs'
               }
             </div>
             <div className="text-sm text-muted-foreground">
@@ -492,9 +526,11 @@ export default function AnalyticsPage() {
             <div className="text-2xl font-bold text-blue-700">
               {safeOverview.summary.avgRegularResponseTime > 0
                 ? safeOverview.summary.avgRegularResponseTime < 1000 
-                  ? `${safeOverview.summary.avgRegularResponseTime}ms`
+                  ? `${Math.round(safeOverview.summary.avgRegularResponseTime)}ms`
                   : `${(safeOverview.summary.avgRegularResponseTime / 1000).toFixed(1)}s`
-                : 'No data'
+                : safeOverview.summary.totalRegularDms > 0 
+                  ? 'Calculating...'
+                  : 'No Regular DMs'
               }
             </div>
             <div className="text-sm text-muted-foreground">
@@ -539,6 +575,31 @@ export default function AnalyticsPage() {
         </TabsList>
 
         <TabsContent value="overview" className="space-y-4">
+          {/* Response Time Fix Button */}
+          {(safeOverview.summary.avgAiResponseTime === 0 || safeOverview.summary.avgRegularResponseTime === 0) && 
+           (safeOverview.summary.totalAiDms > 0 || safeOverview.summary.totalRegularDms > 0) && (
+            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h4 className="font-semibold text-yellow-800">Response Time Data Missing</h4>
+                  <p className="text-sm text-yellow-700">
+                    We found DMs but response times aren't showing. Click to recalculate from existing data.
+                  </p>
+                </div>
+                <Button 
+                  onClick={backfillMetrics} 
+                  disabled={backfillingMetrics}
+                  variant="outline"
+                  size="sm"
+                  className="border-yellow-300 bg-yellow-100 text-yellow-800 hover:bg-yellow-200 flex items-center gap-2"
+                >
+                  <RefreshCw className={`h-4 w-4 ${backfillingMetrics ? 'animate-spin' : ''}`} />
+                  {backfillingMetrics ? 'Fixing...' : 'Fix Response Times'}
+                </Button>
+              </div>
+            </div>
+          )}
+
           {/* Daily Performance Chart */}
           <Card>
             <CardHeader>

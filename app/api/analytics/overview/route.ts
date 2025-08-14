@@ -93,16 +93,58 @@ export async function GET(req: NextRequest) {
       : 0
       
     // Calculate separate response times
-    const aiMetricsWithTime = performanceMetrics.filter(m => m.avgAiResponseTime)
-    const regularMetricsWithTime = performanceMetrics.filter(m => m.avgRegularResponseTime)
+    const aiMetricsWithTime = performanceMetrics.filter(m => m.avgAiResponseTime && m.avgAiResponseTime > 0)
+    const regularMetricsWithTime = performanceMetrics.filter(m => m.avgRegularResponseTime && m.avgRegularResponseTime > 0)
     
-    const avgAiResponseTime = aiMetricsWithTime.length > 0 
-      ? aiMetricsWithTime.reduce((sum, metric) => sum + (metric.avgAiResponseTime || 0), 0) / aiMetricsWithTime.length
-      : 0
+    let avgAiResponseTime = 0
+    let avgRegularResponseTime = 0
+    
+    if (aiMetricsWithTime.length > 0) {
+      avgAiResponseTime = aiMetricsWithTime.reduce((sum, metric) => sum + (metric.avgAiResponseTime || 0), 0) / aiMetricsWithTime.length
+    }
+    
+    if (regularMetricsWithTime.length > 0) {
+      avgRegularResponseTime = regularMetricsWithTime.reduce((sum, metric) => sum + (metric.avgRegularResponseTime || 0), 0) / regularMetricsWithTime.length
+    }
+    
+    // If PerformanceMetrics don't have separate response times, calculate directly from DM analytics
+    if (avgAiResponseTime === 0 || avgRegularResponseTime === 0) {
+      console.log('📊 PerformanceMetrics missing separate response times, calculating from DM analytics...')
       
-    const avgRegularResponseTime = regularMetricsWithTime.length > 0 
-      ? regularMetricsWithTime.reduce((sum, metric) => sum + (metric.avgRegularResponseTime || 0), 0) / regularMetricsWithTime.length
-      : 0
+      // Get AI DM response times
+      const aiDms = await prisma.dmAnalytics.findMany({
+        where: {
+          userId,
+          triggerType: 'ai_dm',
+          status: 'sent',
+          responseTimeMs: { gt: 0 },
+          sentAt: { gte: startDate }
+        },
+        select: { responseTimeMs: true }
+      })
+      
+      // Get Regular DM response times
+      const regularDms = await prisma.dmAnalytics.findMany({
+        where: {
+          userId,
+          triggerType: 'dm',
+          status: 'sent',
+          responseTimeMs: { gt: 0 },
+          sentAt: { gte: startDate }
+        },
+        select: { responseTimeMs: true }
+      })
+      
+      if (avgAiResponseTime === 0 && aiDms.length > 0) {
+        avgAiResponseTime = aiDms.reduce((sum, dm) => sum + dm.responseTimeMs, 0) / aiDms.length
+        console.log(`✅ Calculated AI response time from ${aiDms.length} DMs: ${avgAiResponseTime}ms`)
+      }
+      
+      if (avgRegularResponseTime === 0 && regularDms.length > 0) {
+        avgRegularResponseTime = regularDms.reduce((sum, dm) => sum + dm.responseTimeMs, 0) / regularDms.length
+        console.log(`✅ Calculated Regular response time from ${regularDms.length} DMs: ${avgRegularResponseTime}ms`)
+      }
+    }
 
     const fastestResponse = Math.min(...performanceMetrics.map(m => m.fastestResponse).filter(r => r !== null))
     const slowestResponse = Math.max(...performanceMetrics.map(m => m.slowestResponse).filter(r => r !== null))
