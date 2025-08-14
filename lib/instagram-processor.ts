@@ -663,6 +663,14 @@ export async function handleInstagramComment(commentData: any, requestId: string
             console.log(`✅ [${requestId}] REAL USER BYPASS: Skipping processing lock for real Instagram user`)
           }
           
+          // Track comment analytics
+          const postId = commentData.media?.id || commentData.media_id || 'unknown'
+          await AnalyticsLogger.updatePostAnalytics(
+            postId || null,
+            automation.userId,
+            'comment'
+          )
+          
           try {
             console.log(`🎯 [${requestId}] Processing automation ${automation.id} for commentId=${commentId} commenterId=${commenterId}`)
             
@@ -717,7 +725,9 @@ export async function handleInstagramComment(commentData: any, requestId: string
               await logAutomationTrigger(automation.id, "comment", rawText, commenterId, commenterUsername, false)
             }
             
-            await replyToInstagramComment(commentId, automation, commenterId, requestId)
+            const processStartTime = Date.now()
+            await replyToInstagramComment(commentId, automation, commenterId, requestId, postId)
+            const processingTime = Date.now() - processStartTime
             
             // ABSOLUTE FINAL FIX: Return immediately after processing ANY automation
             // This ensures NO OTHER AUTOMATIONS can process the same comment
@@ -747,7 +757,15 @@ export async function handleInstagramComment(commentData: any, requestId: string
   }
 }
 
-async function sendInstagramMessage(recipientId: string, automation: any, pageId: string, requestId: string, account?: any) {
+async function sendInstagramMessage(
+  recipientId: string, 
+  automation: any, 
+  pageId: string, 
+  requestId: string, 
+  account?: any,
+  triggerSource?: string // postId if triggered by comment
+) {
+  const startTime = Date.now()
   console.log(`📩 [${requestId}] Sending DM to ${recipientId} with automation ${automation.id}`)
   
   try {
@@ -796,8 +814,64 @@ async function sendInstagramMessage(recipientId: string, automation: any, pageId
     
     await Promise.all(tasks)
     
+    // Calculate response time and log analytics
+    const responseTime = Date.now() - startTime
+    
+    // Log DM analytics
+    await AnalyticsLogger.logDmSent(
+      automation.id,
+      automation.userId,
+      recipientId,
+      'dm',
+      triggerSource || null,
+      responseMessage.length,
+      responseTime,
+      'sent'
+    )
+    
+    // Update post analytics if triggered by comment
+    if (triggerSource) {
+      await AnalyticsLogger.updatePostAnalytics(
+        triggerSource,
+        automation.userId,
+        'dm_sent',
+        responseTime
+      )
+    }
+    
+    // Update daily metrics
+    await AnalyticsLogger.updateDailyMetrics(
+      automation.userId,
+      responseTime,
+      'success'
+    )
+    
+    console.log(`✅ [${requestId}] DM sent successfully in ${responseTime}ms`)
+    
   } catch (error) {
+    const responseTime = Date.now() - startTime
     console.error(`💥 [${requestId}] Error sending Instagram DM:`, error)
+    
+    // Log failed DM analytics
+    await AnalyticsLogger.logDmSent(
+      automation.id,
+      automation.userId,
+      recipientId,
+      'dm',
+      triggerSource || null,
+      automation.message?.length || 0,
+      responseTime,
+      'failed',
+      error instanceof Error ? error.message : 'Unknown error'
+    )
+    
+    // Update daily metrics for failure
+    await AnalyticsLogger.updateDailyMetrics(
+      automation.userId,
+      responseTime,
+      'failed'
+    )
+    
     throw error
   }
 }
@@ -853,7 +927,7 @@ async function sendInstagramAIMessage(recipientId: string, automation: any, page
   }
 }
 
-async function replyToInstagramComment(commentId: string, automation: any, commenterId: string, requestId: string) {
+async function replyToInstagramComment(commentId: string, automation: any, commenterId: string, requestId: string, postId?: string) {
   console.log(`💭 [${requestId}] Replying to comment ${commentId}`)
   
   // REAL USER BYPASS: Allow real Instagram users to bypass duplicate prevention
@@ -1037,6 +1111,15 @@ async function replyToInstagramComment(commentId: string, automation: any, comme
     // Log what type of message was sent
     const responseData = await dmResponse.json()
     console.log(`📋 [${requestId}] Message details:`, responseData)
+    
+    // Log analytics for comment reply
+    if (postId) {
+      await AnalyticsLogger.updatePostAnalytics(
+        postId || null,
+        automation.userId,
+        'comment_replied'
+      )
+    }
     
     // MARK MESSAGE AS SENT in NUCLEAR prevention system (ABSOLUTE MOST AGGRESSIVE)
     NuclearDuplicatePrevention.markMessageSent(commentId, commenterId, automation.id)
@@ -1307,13 +1390,181 @@ async function generateAIResponseWithContext(
   }
 }
 
+// Enhanced analytics logging
+class AnalyticsLogger {
+  static async logDmSent(
+    automationId: string,
+    userId: string,
+    recipientId: string,
+    triggerType: string,
+    triggerSource: string | null,
+    messageLength: number,
+    responseTimeMs: number,
+    status: 'sent' | 'failed' | 'rate_limited',
+    errorCode?: string
+  ) {
+    try {
+      await prisma.dmAnalytics.create({
+        data: {
+          automationId,
+          userId,
+          recipientId,
+          triggerType,
+          triggerSource,
+          messageLength,
+          responseTimeMs,
+          status,
+          errorCode
+        }
+      })
+      console.log(`📊 DM Analytics: ${status} - ${responseTimeMs}ms`)
+    } catch (error) {
+      console.error('Error logging DM analytics:', error)
+    }
+  }
+  
+  static async updatePostAnalytics(
+    postId: string | null,
+    userId: string,
+    action: 'comment' | 'dm_sent' | 'comment_replied',
+    responseTime?: number
+  ) {
+    try {
+      if (!postId) return
+      
+      console.log(`📊 Post Analytics: ${postId} - ${action} - ${responseTime}ms`)
+      
+      const existing = await prisma.postAnalytics.findUnique({
+        where: { postId }
+      })
+      
+      if (existing) {
+        const updateData: any = {
+          lastActivity: new Date(),
+          updatedAt: new Date()
+        }
+        
+        if (action === 'comment') {
+          updateData.totalComments = { increment: 1 }
+        } else if (action === 'dm_sent') {
+          updateData.dmsSent = { increment: 1 }
+        } else if (action === 'comment_replied') {
+          updateData.commentsReplied = { increment: 1 }
+        }
+        
+        if (responseTime && existing.avgResponseTime) {
+          const totalResponses = existing.dmsSent + existing.commentsReplied
+          updateData.avgResponseTime = (
+            (existing.avgResponseTime * totalResponses + responseTime) / (totalResponses + 1)
+          )
+        } else if (responseTime) {
+          updateData.avgResponseTime = responseTime
+        }
+        
+        await prisma.postAnalytics.update({
+          where: { postId },
+          data: updateData
+        })
+      } else {
+        await prisma.postAnalytics.create({
+          data: {
+            postId,
+            userId,
+            totalComments: action === 'comment' ? 1 : 0,
+            dmsSent: action === 'dm_sent' ? 1 : 0,
+            commentsReplied: action === 'comment_replied' ? 1 : 0,
+            uniqueUsers: 1,
+            avgResponseTime: responseTime || null
+          }
+        })
+      }
+    } catch (error) {
+      console.error('Error updating post analytics:', error)
+    }
+  }
+  
+  static async updateDailyMetrics(
+    userId: string,
+    responseTime: number,
+    status: 'success' | 'failed'
+  ) {
+    try {
+      console.log(`📊 Daily Metrics: ${userId} - ${status} - ${responseTime}ms`)
+      
+      const today = new Date()
+      today.setHours(0, 0, 0, 0)
+      
+      const existing = await prisma.performanceMetrics.findUnique({
+        where: {
+          userId_date: {
+            userId,
+            date: today
+          }
+        }
+      })
+      
+      if (existing) {
+        const totalTriggers = existing.totalTriggers + 1
+        const successfulDms = status === 'success' ? existing.successfulDms + 1 : existing.successfulDms
+        const failedDms = status === 'failed' ? existing.failedDms + 1 : existing.failedDms
+        
+        const newAvgResponseTime = (
+          (existing.avgResponseTime * existing.totalTriggers + responseTime) / totalTriggers
+        )
+        
+        await prisma.performanceMetrics.update({
+          where: {
+            userId_date: {
+              userId,
+              date: today
+            }
+          },
+          data: {
+            totalTriggers,
+            successfulDms,
+            failedDms,
+            avgResponseTime: newAvgResponseTime,
+            fastestResponse: existing.fastestResponse ? 
+              Math.min(existing.fastestResponse, responseTime) : responseTime,
+            slowestResponse: existing.slowestResponse ? 
+              Math.max(existing.slowestResponse, responseTime) : responseTime,
+            updatedAt: new Date()
+          }
+        })
+      } else {
+        await prisma.performanceMetrics.create({
+          data: {
+            userId,
+            date: today,
+            totalTriggers: 1,
+            successfulDms: status === 'success' ? 1 : 0,
+            failedDms: status === 'failed' ? 1 : 0,
+            avgResponseTime: responseTime,
+            fastestResponse: responseTime,
+            slowestResponse: responseTime,
+            uniqueRecipients: 1
+          }
+        })
+      }
+    } catch (error) {
+      console.error('Error updating daily metrics:', error)
+    }
+  }
+}
+
 async function logAutomationTrigger(
   automationId: string,
   triggerType: string,
   triggerText: string,
   userId: string,
   username?: string,
-  isNewFollower?: boolean
+  isNewFollower?: boolean,
+  postId?: string,
+  commentId?: string,
+  processingTimeMs?: number,
+  responseStatus?: string,
+  errorMessage?: string,
+  responseType?: string
 ) {
   try {
     await prisma.automationLog.create({
@@ -1325,6 +1576,12 @@ async function logAutomationTrigger(
         username: username,
         isNewFollower: isNewFollower || false,
         triggeredAt: new Date(),
+        postId,
+        commentId,
+        processingTimeMs,
+        responseStatus,
+        errorMessage,
+        responseType
       },
     })
   } catch (error) {

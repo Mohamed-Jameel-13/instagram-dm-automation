@@ -1,6 +1,6 @@
 "use client"
 
-import { Home, Zap, User, HelpCircle, LogOut, Link as LinkIcon } from "lucide-react"
+import { Home, Zap, User, HelpCircle, LogOut, Link as LinkIcon, BarChart3 } from "lucide-react"
 import { usePathname, useRouter } from "next/navigation"
 import Link from "next/link"
 import { signOut } from "firebase/auth"
@@ -27,6 +27,11 @@ const navItems = [
     title: "Automations",
     href: "/automations",
     icon: Zap,
+  },
+  {
+    title: "Analytics",
+    href: "/analytics",
+    icon: BarChart3,
   },
   {
     title: "Integrations",

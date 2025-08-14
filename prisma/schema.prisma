@@ -92,6 +92,19 @@ model AutomationLog {
   isNewFollower Boolean?
   triggeredAt   DateTime @default(now())
   createdAt     DateTime @default(now())
+  
+  // Enhanced analytics fields
+  postId        String?   // Instagram post ID if comment trigger
+  commentId     String?   // Instagram comment ID if comment trigger
+  processingTimeMs Int?   // Time taken to process and send response
+  responseStatus String?  // success, failed, rate_limited, etc.
+  errorMessage  String?   // Error details if failed
+  responseType  String?   // dm, comment_reply, ai_dm, etc.
+  
+  @@index([automationId, triggeredAt])
+  @@index([postId, triggeredAt])
+  @@index([triggerType, triggeredAt])
+  @@index([userId, triggeredAt])
 }
 
 model TrackedUser {
@@ -130,4 +143,58 @@ model ProcessedWebhook {
 
   @@index([eventId])
   @@index([processedAt])
+}
+
+// New analytics models
+model DmAnalytics {
+  id               String   @id @default(cuid())
+  automationId     String
+  userId           String   // Owner of the automation
+  recipientId      String   // Instagram user who received DM
+  triggerType      String   // dm, comment, follow_comment
+  triggerSource    String?  // postId if triggered by comment
+  messageLength    Int
+  responseTimeMs   Int      // Time from trigger to DM sent
+  status           String   // sent, failed, rate_limited
+  errorCode        String?
+  sentAt           DateTime @default(now())
+  
+  @@index([automationId, sentAt])
+  @@index([triggerSource, sentAt])
+  @@index([userId, sentAt])
+}
+
+model PostAnalytics {
+  id               String   @id @default(cuid())
+  postId           String   @unique
+  userId           String   // Owner of the automation
+  totalComments    Int      @default(0)
+  dmsSent          Int      @default(0)
+  commentsReplied  Int      @default(0)
+  uniqueUsers      Int      @default(0)
+  avgResponseTime  Float?   // Average response time in milliseconds
+  lastActivity     DateTime @default(now())
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  
+  @@index([userId, lastActivity])
+  @@index([postId])
+}
+
+model PerformanceMetrics {
+  id               String   @id @default(cuid())
+  userId           String
+  date             DateTime // Date for daily aggregation
+  totalTriggers    Int      @default(0)
+  successfulDms    Int      @default(0)
+  failedDms        Int      @default(0)
+  avgResponseTime  Float    @default(0)
+  fastestResponse  Int?     // Fastest response in ms
+  slowestResponse  Int?     // Slowest response in ms
+  uniqueRecipients Int      @default(0)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  
+  @@unique([userId, date])
+  @@index([userId, date])
 }
