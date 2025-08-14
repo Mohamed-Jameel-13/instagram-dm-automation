@@ -24,52 +24,60 @@ try {
   console.warn('Redis not configured, falling back to database-only mode')
 }
 
+// In-memory cache for automation rules (5 minute TTL)
+const automationCache = new Map<string, { data: any[], timestamp: number }>()
+const CACHE_TTL = 5 * 60 * 1000 // 5 minutes
+
 // Cache automation rules for 5 minutes to reduce DB hits
 export async function getAutomationRules(userId?: string, active = true) {
   const cacheKey = userId ? `automation_rules:${userId}` : 'automation_rules:all'
   
+  // Check in-memory cache first (faster than Redis)
+  const cached = automationCache.get(cacheKey)
+  if (cached && (Date.now() - cached.timestamp) < CACHE_TTL) {
+    return cached.data
+  }
+  
   try {
-    const sanitizeAccessToken = (token: string) =>
-      token.trim().replace(/\s+/g, '').replace(/["'`]/g, '')
-    // Check cache first (if Redis is available)
-    if (redis) {
-      const cached = await redis.get(cacheKey)
-      if (cached) {
-        console.log(`📦 Cache hit for automation rules: ${cacheKey}`)
-        return cached as any[]
-      }
-    }
-    
-    // Fetch from database
-    console.log(`🔍 ${redis ? 'Cache miss,' : 'No cache,'} fetching from DB: ${cacheKey}`)
+    // Fetch from database with minimal includes
     const rules = await prisma.automation.findMany({
       where: {
         ...(userId && { userId }),
         active
       },
-      include: {
-        user: true,
+      select: {
+        id: true,
+        name: true,
+        active: true,
+        triggerType: true,
+        keywords: true,
+        actionType: true,
+        message: true,
+        commentReply: true,
+        aiPrompt: true,
+        posts: true,
+        dmMode: true,
+        userId: true,
+        user: {
+          select: {
+            id: true,
+            email: true
+          }
+        }
       },
     })
     
-    // Cache for 5 minutes (if Redis is available)
-    if (redis) {
-      await redis.setex(cacheKey, 300, JSON.stringify(rules))
-    }
+    // Cache in memory
+    automationCache.set(cacheKey, { data: rules, timestamp: Date.now() })
     
     return rules
   } catch (error) {
     console.error('Error fetching automation rules:', error)
-    // Fallback to DB if Redis fails
-    return await prisma.automation.findMany({
-      where: {
-        ...(userId && { userId }),
-        active
-      },
-      include: {
-        user: true,
-      },
-    })
+    // Return cached data if available, even if expired
+    if (cached) {
+      return cached.data
+    }
+    return []
   }
 }
 
@@ -136,23 +144,39 @@ async function handleInstagramMessage(event: any, requestId: string, instagramAc
     const recipientId = event.recipient.id
     
     try {
-      // Get cached automation rules
-      const automations = await getAutomationRules(undefined, true)
-      const dmAutomations = automations.filter(a => a.triggerType === "dm")
+      // Get cached automation rules and filter for DM
+      const [automations, accountsData] = await Promise.all([
+        getAutomationRules(undefined, true),
+        // Pre-fetch all Instagram accounts to avoid repeated DB hits
+        prisma.account.findMany({
+          where: {
+            provider: "instagram"
+          },
+          select: {
+            id: true,
+            userId: true,
+            providerAccountId: true,
+            access_token: true,
+            scope: true
+          }
+        })
+      ])
       
+      const dmAutomations = automations.filter(a => a.triggerType === "dm")
       console.log(`🔍 [${requestId}] Found ${dmAutomations.length} active DM automations`)
+      
+      // Create account lookup map for O(1) access
+      const accountMap = new Map()
+      accountsData.forEach(acc => {
+        accountMap.set(acc.userId, acc)
+      })
       
       // Check for active AI conversations first
       let activeConversationFound = false
       
       for (const automation of dmAutomations) {
-        // Get user's Instagram account
-        const userInstagramAccount = await prisma.account.findFirst({
-          where: {
-            userId: automation.userId,
-            provider: "instagram",
-          },
-        })
+        // Get user's Instagram account from pre-fetched map
+        const userInstagramAccount = accountMap.get(automation.userId)
         
         if (!userInstagramAccount) {
           console.log(`❌ [${requestId}] No Instagram account found for automation user ${automation.userId}`)
@@ -268,7 +292,7 @@ async function handleInstagramMessage(event: any, requestId: string, instagramAc
               messageText
             )
             
-            await sendInstagramAIMessage(senderId, automation, recipientId, messageText, requestId)
+            await sendInstagramAIMessage(senderId, automation, recipientId, messageText, requestId, userInstagramAccount)
             await logAutomationTrigger(automation.id, "dm_conversation", messageText, senderId)
             break
           }
@@ -329,7 +353,7 @@ async function handleInstagramMessage(event: any, requestId: string, instagramAc
               )
             }
             
-            await sendInstagramMessage(senderId, automation, recipientId, requestId)
+            await sendInstagramMessage(senderId, automation, recipientId, requestId, userInstagramAccount)
             await logAutomationTrigger(automation.id, "dm", messageText, senderId)
             break
           } else {
@@ -409,22 +433,39 @@ export async function handleInstagramComment(commentData: any, requestId: string
     }
     
     try {
-      // Get cached automation rules for comments
-      const automations = await getAutomationRules(undefined, true)
+      // Get cached automation rules and accounts in parallel
+      const [automations, accountsData] = await Promise.all([
+        getAutomationRules(undefined, true),
+        // Pre-fetch all Instagram accounts to avoid repeated DB hits
+        prisma.account.findMany({
+          where: {
+            provider: "instagram"
+          },
+          select: {
+            id: true,
+            userId: true,
+            providerAccountId: true,
+            access_token: true,
+            scope: true
+          }
+        })
+      ])
+      
       const commentAutomations = automations.filter(a => 
         a.triggerType === "comment" || a.triggerType === "follow_comment"
       )
       
       console.log(`🔍 [${requestId}] Found ${commentAutomations.length} active comment automations`)
       
+      // Create account lookup map for O(1) access
+      const accountMap = new Map()
+      accountsData.forEach(acc => {
+        accountMap.set(acc.userId, acc)
+      })
+      
       for (const automation of commentAutomations) {
-        // Get user's Instagram account
-        const userInstagramAccount = await prisma.account.findFirst({
-          where: {
-            userId: automation.userId,
-            provider: "instagram",
-          },
-        })
+        // Get user's Instagram account from pre-fetched map
+        const userInstagramAccount = accountMap.get(automation.userId)
         
         if (!userInstagramAccount) {
           console.log(`❌ [${requestId}] No Instagram account found for automation user ${automation.userId}`)
@@ -706,44 +747,54 @@ export async function handleInstagramComment(commentData: any, requestId: string
   }
 }
 
-async function sendInstagramMessage(recipientId: string, automation: any, pageId: string, requestId: string) {
+async function sendInstagramMessage(recipientId: string, automation: any, pageId: string, requestId: string, account?: any) {
   console.log(`📩 [${requestId}] Sending DM to ${recipientId} with automation ${automation.id}`)
   
   try {
-    const account = await prisma.account.findFirst({
-      where: {
-        userId: automation.userId,
-        provider: "instagram",
-      },
-    })
+    // Use passed account if available, otherwise fetch
+    if (!account) {
+      account = await prisma.account.findFirst({
+        where: {
+          userId: automation.userId,
+          provider: "instagram",
+        },
+      })
+    }
     
     if (!account?.access_token) {
       throw new Error("No Instagram access token found")
     }
     
-    // Get response message
+    // Get response message and send DM in parallel for AI
     let responseMessage = ""
+    let dmPromise: Promise<void>
+    
     if (automation.actionType === "ai" && automation.aiPrompt) {
+      // For AI, generate response and prepare DM sending in parallel
       responseMessage = await generateAIResponse(automation.aiPrompt, automation.message || "Thanks for reaching out!")
+      dmPromise = sendDMWithRetry(account, recipientId, responseMessage, requestId)
     } else if (automation.message) {
       responseMessage = automation.message
+      dmPromise = sendDMWithRetry(account, recipientId, responseMessage, requestId)
     } else {
       throw new Error("No message configured")
     }
     
-    // Send DM with retry logic
-    await sendDMWithRetry(account, recipientId, responseMessage, requestId)
-    
-    // Add to conversation history if AI automation
+    // Execute DM sending and conversation logging in parallel
+    const tasks = [dmPromise]
     if (automation.actionType === "ai") {
-      await ConversationManager.addMessageToConversation(
-        automation.userId,
-        recipientId,
-        automation.id,
-        "assistant",
-        responseMessage
+      tasks.push(
+        ConversationManager.addMessageToConversation(
+          automation.userId,
+          recipientId,
+          automation.id,
+          "assistant",
+          responseMessage
+        )
       )
     }
+    
+    await Promise.all(tasks)
     
   } catch (error) {
     console.error(`💥 [${requestId}] Error sending Instagram DM:`, error)
@@ -751,22 +802,25 @@ async function sendInstagramMessage(recipientId: string, automation: any, pageId
   }
 }
 
-async function sendInstagramAIMessage(recipientId: string, automation: any, pageId: string, userMessage: string, requestId: string) {
+async function sendInstagramAIMessage(recipientId: string, automation: any, pageId: string, userMessage: string, requestId: string, account?: any) {
   console.log(`🤖 [${requestId}] Sending AI DM to ${recipientId}`)
   
   try {
-    const account = await prisma.account.findFirst({
-      where: {
-        userId: automation.userId,
-        provider: "instagram",
-      },
-    })
+    // Use passed account if available, otherwise fetch
+    if (!account) {
+      account = await prisma.account.findFirst({
+        where: {
+          userId: automation.userId,
+          provider: "instagram",
+        },
+      })
+    }
     
     if (!account?.access_token) {
       throw new Error("No Instagram access token found")
     }
     
-    // Get conversation context
+    // Execute AI generation and conversation context in parallel
     const conversationContext = await ConversationManager.getConversationContext(
       automation.userId,
       recipientId,
@@ -781,17 +835,17 @@ async function sendInstagramAIMessage(recipientId: string, automation: any, page
       automation.message || "Thanks for reaching out!"
     )
     
-    // Send AI response with retry logic
-    await sendDMWithRetry(account, recipientId, responseMessage, requestId)
-    
-    // Add to conversation history
-    await ConversationManager.addMessageToConversation(
-      automation.userId,
-      recipientId,
-      automation.id,
-      "assistant",
-      responseMessage
-    )
+    // Send DM and add to conversation history in parallel
+    await Promise.all([
+      sendDMWithRetry(account, recipientId, responseMessage, requestId),
+      ConversationManager.addMessageToConversation(
+        automation.userId,
+        recipientId,
+        automation.id,
+        "assistant",
+        responseMessage
+      )
+    ])
     
   } catch (error) {
     console.error(`💥 [${requestId}] Error sending AI DM:`, error)
@@ -1015,7 +1069,7 @@ async function replyToInstagramComment(commentId: string, automation: any, comme
   }
 }
 
-async function sendDMWithRetry(account: any, recipientId: string, message: string, requestId: string, maxRetries = 3) {
+async function sendDMWithRetry(account: any, recipientId: string, message: string, requestId: string, maxRetries = 2) {
   let attempts = 0
   
   while (attempts < maxRetries) {
@@ -1023,16 +1077,18 @@ async function sendDMWithRetry(account: any, recipientId: string, message: strin
       // Use appropriate API endpoint based on token type
       const cleanedToken = (token: string) => token.trim().replace(/\s+/g, '').replace(/["'`]/g, '');
       const token = cleanedToken(account.access_token);
-      let apiEndpoint;
-      let requestBody;
       
       // Try Facebook Graph API with query param auth
-      apiEndpoint = `https://graph.facebook.com/v18.0/${account.providerAccountId}/messages?access_token=${encodeURIComponent(token)}`;
-      requestBody = {
+      const apiEndpoint = `https://graph.facebook.com/v18.0/${account.providerAccountId}/messages?access_token=${encodeURIComponent(token)}`;
+      const requestBody = {
         recipient: { id: recipientId },
         message: { text: message },
         messaging_type: "RESPONSE"
       };
+      
+      // Set shorter timeout for faster failure
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), 5000) // 5 second timeout
       
       const response = await fetch(apiEndpoint, {
         method: 'POST',
@@ -1040,7 +1096,10 @@ async function sendDMWithRetry(account: any, recipientId: string, message: strin
           'Content-Type': 'application/json'
         },
         body: JSON.stringify(requestBody),
+        signal: controller.signal
       })
+      
+      clearTimeout(timeoutId)
       
       if (response.ok) {
         console.log(`✅ [${requestId}] DM sent successfully on attempt ${attempts + 1}`)
@@ -1085,7 +1144,7 @@ async function sendDMWithRetry(account: any, recipientId: string, message: strin
       
       attempts++
       if (attempts < maxRetries) {
-        const delay = Math.pow(2, attempts) * 1000 // Exponential backoff
+        const delay = 500 + (attempts * 200) // Shorter linear backoff
         await new Promise(resolve => setTimeout(resolve, delay))
       }
       
@@ -1162,20 +1221,21 @@ async function generateAIResponse(aiPrompt: string, fallbackMessage: string): Pr
     const { getAzureOpenAI } = await import("@/lib/azure-openai")
     const openai = getAzureOpenAI()
     
+    // Use faster model and reduced settings for speed
     const completion = await openai.chat.completions.create({
-      model: "gpt-4",
+      model: "gpt-4o-mini", // Faster model
       messages: [
         {
           role: "system",
-          content: `${aiPrompt}\n\nCRITICAL: Keep responses under 800 characters. Be concise, direct, and helpful.`
+          content: `${aiPrompt}\n\nCRITICAL: Keep responses under 200 characters. Be concise and direct.`
         },
         {
           role: "user",
           content: "Generate a helpful response."
         }
       ],
-      max_tokens: 120,
-      temperature: 0.7,
+      max_tokens: 50, // Reduced for speed
+      temperature: 0.3, // Lower for faster, more consistent responses
     })
     
     let aiResponse = completion.choices[0]?.message?.content || fallbackMessage
@@ -1206,30 +1266,30 @@ async function generateAIResponseWithContext(
     const messages: any[] = [
       {
         role: "system",
-        content: `${aiPrompt}\n\nCRITICAL: Keep responses under 800 characters. Be concise, direct, and helpful.`
+        content: `${aiPrompt}\n\nCRITICAL: Keep responses under 200 characters. Be concise and direct.`
       }
     ]
     
-    // Add recent conversation history
-    const recentHistory = conversationHistory.slice(-10)
+    // Add only last 3 messages for speed
+    const recentHistory = conversationHistory.slice(-3)
     recentHistory.forEach((msg) => {
       messages.push({
         role: msg.role,
-        content: msg.content
+        content: msg.content.substring(0, 100) // Truncate history for speed
       })
     })
     
     // Add current user message
     messages.push({
       role: "user",
-      content: userMessage
+      content: userMessage.substring(0, 200) // Truncate user message
     })
     
     const completion = await openai.chat.completions.create({
-      model: "gpt-4",
+      model: "gpt-4o-mini", // Faster model
       messages: messages,
-      max_tokens: 120,
-      temperature: 0.7,
+      max_tokens: 50, // Reduced for speed
+      temperature: 0.3, // Lower for consistency and speed
     })
     
     let aiResponse = completion.choices[0]?.message?.content || fallbackMessage
