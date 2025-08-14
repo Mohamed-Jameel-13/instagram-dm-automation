@@ -97,11 +97,11 @@ export async function GET(req: NextRequest) {
     const regularMetricsWithTime = performanceMetrics.filter(m => m.avgRegularResponseTime)
     
     const avgAiResponseTime = aiMetricsWithTime.length > 0 
-      ? aiMetricsWithTime.reduce((sum, metric) => sum + metric.avgAiResponseTime, 0) / aiMetricsWithTime.length
+      ? aiMetricsWithTime.reduce((sum, metric) => sum + (metric.avgAiResponseTime || 0), 0) / aiMetricsWithTime.length
       : 0
       
     const avgRegularResponseTime = regularMetricsWithTime.length > 0 
-      ? regularMetricsWithTime.reduce((sum, metric) => sum + metric.avgRegularResponseTime, 0) / regularMetricsWithTime.length
+      ? regularMetricsWithTime.reduce((sum, metric) => sum + (metric.avgRegularResponseTime || 0), 0) / regularMetricsWithTime.length
       : 0
 
     const fastestResponse = Math.min(...performanceMetrics.map(m => m.fastestResponse).filter(r => r !== null))
@@ -123,7 +123,7 @@ export async function GET(req: NextRequest) {
         successfulDms,
         failedDms,
         successRate: Math.round(successRate * 100) / 100,
-        avgResponseTime: Math.round(avgResponseTime),
+        // Remove overall avgResponseTime and use separate AI and Regular response times
         avgAiResponseTime: Math.round(avgAiResponseTime),
         avgRegularResponseTime: Math.round(avgRegularResponseTime),
         fastestResponse: isFinite(fastestResponse) ? fastestResponse : null,

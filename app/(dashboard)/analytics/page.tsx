@@ -37,13 +37,18 @@ import {
 interface OverviewData {
   summary: {
     totalDms: number
+    totalAiDms: number
+    totalRegularDms: number
+    successfulAiDms: number
+    successfulRegularDms: number
     totalComments: number
     totalAutomations: number
     totalTriggers: number
     successfulDms: number
     failedDms: number
     successRate: number
-    avgResponseTime: number
+    avgAiResponseTime: number
+    avgRegularResponseTime: number
     fastestResponse: number | null
     slowestResponse: number | null
   }
@@ -60,19 +65,48 @@ interface OverviewData {
 interface PostAnalytics {
   posts: Array<{
     postId: string
+    postThumbnail?: string
+    postCaption?: string
+    shortCaption: string
+    postType?: string
     totalComments: number
     dmsSent: number
+    aiDmsSent: number
+    regularDmsSent: number
     commentsReplied: number
     uniqueUsers: number
     avgResponseTime: number | null
+    avgAiResponseTime: number | null
+    avgRegularResponseTime: number | null
     conversionRate: number
     lastActivity: string
+    createdAt?: string
     recentDms: Array<{
       recipientId: string
       responseTimeMs: number
       status: string
       sentAt: string
       messageLength: number
+      triggerType: string
+      aiPrompt?: string
+    }>
+    aiDms: Array<{
+      recipientId: string
+      responseTimeMs: number
+      status: string
+      sentAt: string
+      messageLength: number
+      triggerType: string
+      aiPrompt?: string
+    }>
+    regularDms: Array<{
+      recipientId: string
+      responseTimeMs: number
+      status: string
+      sentAt: string
+      messageLength: number
+      triggerType: string
+      aiPrompt?: string
     }>
     recentTriggers: Array<{
       triggerType: string
@@ -90,10 +124,16 @@ interface PostAnalytics {
     avgConversionRate: number
     topPosts: Array<{
       postId: string
+      shortCaption: string
+      postThumbnail?: string
+      postType?: string
       dmsSent: number
+      aiDmsSent: number
+      regularDmsSent: number
       totalComments: number
       conversionRate: number
-      avgResponseTime: number | null
+      avgAiResponseTime: number | null
+      avgRegularResponseTime: number | null
     }>
   }
 }
@@ -347,7 +387,7 @@ export default function AnalyticsPage() {
       )}
 
       {/* Overview Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Total DMs Sent</CardTitle>
@@ -391,23 +431,40 @@ export default function AnalyticsPage() {
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Overall Avg Time</CardTitle>
-            <Clock className="h-4 w-4 text-muted-foreground" />
+            <CardTitle className="text-sm font-medium">AI Response Time</CardTitle>
+            <Bot className="h-4 w-4 text-purple-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">
-              {safeOverview.summary.avgResponseTime < 1000 
-                ? `${safeOverview.summary.avgResponseTime}ms`
-                : `${(safeOverview.summary.avgResponseTime / 1000).toFixed(1)}s`
+            <div className="text-2xl font-bold text-purple-700">
+              {safeOverview.summary.avgAiResponseTime > 0
+                ? safeOverview.summary.avgAiResponseTime < 1000 
+                  ? `${safeOverview.summary.avgAiResponseTime}ms`
+                  : `${(safeOverview.summary.avgAiResponseTime / 1000).toFixed(1)}s`
+                : 'No data'
               }
             </div>
-            <div className="flex flex-col gap-1 mt-2">
-              <div className="bg-purple-50 border border-purple-200 px-2 py-1 rounded text-xs">
-                <span className="text-purple-700 font-medium">🤖 AI: {safeOverview.summary.avgAiResponseTime || 0}ms</span>
-              </div>
-              <div className="bg-blue-50 border border-blue-200 px-2 py-1 rounded text-xs">
-                <span className="text-blue-700 font-medium">💬 Regular: {safeOverview.summary.avgRegularResponseTime || 0}ms</span>
-              </div>
+            <div className="text-sm text-muted-foreground">
+              AI-generated DMs avg time
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Regular Response Time</CardTitle>
+            <Clock className="h-4 w-4 text-blue-500" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-blue-700">
+              {safeOverview.summary.avgRegularResponseTime > 0
+                ? safeOverview.summary.avgRegularResponseTime < 1000 
+                  ? `${safeOverview.summary.avgRegularResponseTime}ms`
+                  : `${(safeOverview.summary.avgRegularResponseTime / 1000).toFixed(1)}s`
+                : 'No data'
+              }
+            </div>
+            <div className="text-sm text-muted-foreground">
+              Template-based DMs avg time
             </div>
           </CardContent>
         </Card>
@@ -544,13 +601,23 @@ export default function AnalyticsPage() {
             <CardContent>
               <div className="h-[300px] sm:h-[400px]">
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={safePostAnalytics.summary.topPosts}>
+                  <BarChart data={safePostAnalytics.summary.topPosts.map(post => ({
+                    ...post,
+                    shortPostId: post.postId.slice(-8) + '...'
+                  }))}>
                     <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="postId" />
+                    <XAxis dataKey="shortPostId" />
                     <YAxis />
-                    <Tooltip />
-                    <Bar dataKey="dmsSent" fill="#8884d8" name="DMs Sent" />
-                    <Bar dataKey="totalComments" fill="#82ca9d" name="Total Comments" />
+                    <Tooltip 
+                      formatter={(value, name) => [value, name]}
+                      labelFormatter={(label) => {
+                        const post = safePostAnalytics.summary.topPosts.find(p => p.postId.slice(-8) + '...' === label)
+                        return post ? post.shortCaption : label
+                      }}
+                    />
+                    <Bar dataKey="regularDmsSent" fill="#3b82f6" name="Regular DMs" />
+                    <Bar dataKey="aiDmsSent" fill="#8b5cf6" name="AI DMs" />
+                    <Bar dataKey="totalComments" fill="#10b981" name="Total Comments" />
                   </BarChart>
                 </ResponsiveContainer>
               </div>
@@ -602,9 +669,7 @@ export default function AnalyticsPage() {
                         {/* Enhanced Post Info */}
                         <div className="mt-2 max-w-[120px] text-center">
                           <div className="text-xs font-medium truncate mb-1">
-                            {post.postCaption ? 
-                              post.postCaption.substring(0, 25) + (post.postCaption.length > 25 ? '...' : '') : 
-                              `${post.postType || 'Post'} #${index + 1}`}
+                            {post.shortCaption || `${post.postType || 'Post'} #${index + 1}`}
                           </div>
                           
                           {/* Stats Row */}
@@ -640,21 +705,90 @@ export default function AnalyticsPage() {
             <CardContent>
               <div className="space-y-4">
                 {safePostAnalytics.posts.slice(0, 10).map((post) => (
-                  <div key={post.postId} className="border rounded-lg p-4 space-y-2">
-                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
-                      <div>
-                        <p className="font-medium text-sm">Post ID: {post.postId}</p>
-                        <div className="flex flex-wrap gap-2 mt-1">
-                          <Badge variant="outline">{post.totalComments} comments</Badge>
-                          <Badge variant="outline">{post.dmsSent} DMs sent</Badge>
-                          <Badge variant={post.conversionRate > 50 ? 'default' : 'secondary'}>
-                            {post.conversionRate}% conversion
+                  <div key={post.postId} className="border rounded-lg p-4 space-y-3">
+                    {/* Post Header with Thumbnail and Caption */}
+                    <div className="flex gap-3">
+                      {post.postThumbnail ? (
+                        <div className="flex-shrink-0">
+                          <img 
+                            src={post.postThumbnail} 
+                            alt="Post thumbnail"
+                            className="w-16 h-16 sm:w-20 sm:h-20 object-cover rounded-lg border"
+                          />
+                        </div>
+                      ) : (
+                        <div className="flex-shrink-0 w-16 h-16 sm:w-20 sm:h-20 bg-gray-200 rounded-lg flex items-center justify-center">
+                          <Image className="h-6 w-6 text-gray-400" />
+                        </div>
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-1">
+                          <Badge variant="outline" className="text-xs">
+                            {post.postType || 'Unknown'}
                           </Badge>
+                          <span className="text-xs text-muted-foreground">
+                            Created: {post.createdAt ? new Date(post.createdAt).toLocaleDateString() : 'Unknown'}
+                          </span>
+                        </div>
+                        <div className="text-xs text-muted-foreground mb-1">
+                          Last activity: {new Date(post.lastActivity).toLocaleDateString()}
+                        </div>
+                        <p className="font-medium text-sm leading-tight">
+                          {post.shortCaption}
+                        </p>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          ID: {post.postId.slice(-8)}...
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Stats and Metrics */}
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                      <div className="text-center p-2 bg-gray-50 rounded">
+                        <div className="text-lg font-semibold">{post.totalComments}</div>
+                        <div className="text-xs text-muted-foreground">Comments</div>
+                      </div>
+                      <div className="text-center p-2 bg-blue-50 rounded">
+                        <div className="text-lg font-semibold text-blue-700">{post.dmsSent}</div>
+                        <div className="text-xs text-muted-foreground">Total DMs</div>
+                      </div>
+                      <div className="text-center p-2 bg-purple-50 rounded">
+                        <div className="text-lg font-semibold text-purple-700">{post.aiDmsSent}</div>
+                        <div className="text-xs text-muted-foreground">AI DMs</div>
+                      </div>
+                      <div className="text-center p-2 bg-green-50 rounded">
+                        <div className="text-lg font-semibold text-green-700">{post.conversionRate}%</div>
+                        <div className="text-xs text-muted-foreground">Conversion</div>
+                      </div>
+                    </div>
+
+                    {/* Response Times */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div className="p-2 border border-purple-200 bg-purple-50 rounded">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-medium text-purple-700">🤖 AI Response Time</span>
+                          <span className="text-sm font-semibold text-purple-700">
+                            {post.avgAiResponseTime 
+                              ? post.avgAiResponseTime < 1000 
+                                ? `${post.avgAiResponseTime}ms`
+                                : `${(post.avgAiResponseTime / 1000).toFixed(1)}s`
+                              : 'No data'
+                            }
+                          </span>
                         </div>
                       </div>
-                      <div className="text-right text-sm text-muted-foreground">
-                        <p>Avg: {post.avgResponseTime}ms</p>
-                        <p>{new Date(post.lastActivity).toLocaleDateString()}</p>
+                      <div className="p-2 border border-blue-200 bg-blue-50 rounded">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-medium text-blue-700">💬 Regular Response Time</span>
+                          <span className="text-sm font-semibold text-blue-700">
+                            {post.avgRegularResponseTime 
+                              ? post.avgRegularResponseTime < 1000 
+                                ? `${post.avgRegularResponseTime}ms`
+                                : `${(post.avgRegularResponseTime / 1000).toFixed(1)}s`
+                              : 'No data'
+                            }
+                          </span>
+                        </div>
                       </div>
                     </div>
                   </div>

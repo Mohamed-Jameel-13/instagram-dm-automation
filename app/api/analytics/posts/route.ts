@@ -92,19 +92,41 @@ export async function GET(req: NextRequest) {
           ? (post.dmsSent / post.totalComments) * 100 
           : 0
 
+        // Calculate separate response times for AI and Regular DMs
+        const aiResponseTimes = aiDms.filter(dm => dm.responseTimeMs > 0).map(dm => dm.responseTimeMs)
+        const regularResponseTimes = regularDms.filter(dm => dm.responseTimeMs > 0).map(dm => dm.responseTimeMs)
+        
+        const avgAiResponseTime = aiResponseTimes.length > 0 
+          ? Math.round(aiResponseTimes.reduce((sum, time) => sum + time, 0) / aiResponseTimes.length)
+          : null
+          
+        const avgRegularResponseTime = regularResponseTimes.length > 0 
+          ? Math.round(regularResponseTimes.reduce((sum, time) => sum + time, 0) / regularResponseTimes.length)
+          : null
+
+        // Extract first few words from caption for better identification
+        const shortCaption = post.postCaption 
+          ? post.postCaption.split(' ').slice(0, 8).join(' ') + (post.postCaption.split(' ').length > 8 ? '...' : '')
+          : 'No caption'
+
         return {
           postId: post.postId,
           postThumbnail: post.postThumbnail,
           postCaption: post.postCaption,
+          shortCaption, // Shortened version for display
           postType: post.postType,
           totalComments: post.totalComments,
           dmsSent: post.dmsSent,
           aiDmsSent: post.aiDmsSent || 0,
+          regularDmsSent: post.dmsSent - (post.aiDmsSent || 0),
           commentsReplied: post.commentsReplied,
           uniqueUsers: post.uniqueUsers,
           avgResponseTime: post.avgResponseTime ? Math.round(post.avgResponseTime) : null,
+          avgAiResponseTime,
+          avgRegularResponseTime,
           conversionRate: Math.round(conversionRate * 100) / 100,
           lastActivity: post.lastActivity,
+          createdAt: post.createdAt, // Post creation date
           recentDms,
           aiDms,
           regularDms,
@@ -119,10 +141,16 @@ export async function GET(req: NextRequest) {
       .slice(0, 5)
       .map(post => ({
         postId: post.postId,
+        shortCaption: post.shortCaption,
+        postThumbnail: post.postThumbnail,
+        postType: post.postType,
         dmsSent: post.dmsSent,
+        aiDmsSent: post.aiDmsSent,
+        regularDmsSent: post.regularDmsSent,
         totalComments: post.totalComments,
         conversionRate: post.conversionRate,
-        avgResponseTime: post.avgResponseTime
+        avgAiResponseTime: post.avgAiResponseTime,
+        avgRegularResponseTime: post.avgRegularResponseTime
       }))
 
     return NextResponse.json({
