@@ -722,6 +722,21 @@ export async function handleInstagramComment(commentData: any, requestId: string
               // Get user's Instagram account for DM sending
               const userInstagramAccount = accountMap.get(automation.userId)
               await sendInstagramMessage(commenterId, automation, instagramAccountId, requestId, userInstagramAccount, postId)
+              
+              // Also send public comment reply if configured
+              if (automation.commentReply && automation.commentReply.trim() !== "") {
+                console.log(`💬 [${requestId}] Also sending public comment reply`)
+                try {
+                  if (userInstagramAccount) {
+                    await replyToCommentWithRetry(userInstagramAccount, commentId, automation.commentReply, requestId)
+                    console.log(`✅ [${requestId}] Public comment reply sent successfully`)
+                  } else {
+                    console.error(`❌ [${requestId}] No Instagram account available for comment reply`)
+                  }
+                } catch (replyError) {
+                  console.error(`❌ [${requestId}] Failed to send public comment reply:`, replyError)
+                }
+              }
             } else {
               console.log(`💬 [${requestId}] Comment triggered reply automation - sending comment reply`)
               await replyToInstagramComment(commentId, automation, commenterId, requestId, postId)
