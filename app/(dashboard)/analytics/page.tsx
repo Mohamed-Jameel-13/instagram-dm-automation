@@ -163,17 +163,65 @@ export default function AnalyticsPage() {
         fetch(`/api/analytics/automations?days=${timeRange}`)
       ])
 
+      // Check if any requests failed
+      if (!overviewRes.ok || !postsRes.ok || !automationsRes.ok) {
+        throw new Error(`API Error: ${overviewRes.status}, ${postsRes.status}, ${automationsRes.status}`)
+      }
+
       const [overviewData, postsData, automationsData] = await Promise.all([
         overviewRes.json(),
         postsRes.json(),
         automationsRes.json()
       ])
 
+      // Check for API error responses
+      if (overviewData.error || postsData.error || automationsData.error) {
+        throw new Error(`API returned error: ${overviewData.error || postsData.error || automationsData.error}`)
+      }
+
       setOverview(overviewData)
       setPostAnalytics(postsData)
       setAutomationAnalytics(automationsData)
     } catch (error) {
       console.error('Error fetching analytics:', error)
+      // Set empty data instead of null to prevent undefined errors
+      setOverview({
+        summary: {
+          totalDms: 0,
+          totalComments: 0,
+          totalAutomations: 0,
+          totalTriggers: 0,
+          successfulDms: 0,
+          failedDms: 0,
+          successRate: 0,
+          avgResponseTime: 0,
+          fastestResponse: null,
+          slowestResponse: null
+        },
+        dailyMetrics: []
+      })
+      setPostAnalytics({
+        posts: [],
+        summary: {
+          totalPosts: 0,
+          totalComments: 0,
+          totalDmsSent: 0,
+          totalReplies: 0,
+          avgConversionRate: 0,
+          topPosts: []
+        }
+      })
+      setAutomationAnalytics({
+        automations: [],
+        summary: {
+          totalAutomations: 0,
+          activeAutomations: 0,
+          totalTriggers: 0,
+          totalDmsSent: 0,
+          avgResponseTime: 0,
+          topPerformer: null
+        }
+      })
     } finally {
       setLoading(false)
     }
@@ -190,9 +238,64 @@ export default function AnalyticsPage() {
   if (!overview || !postAnalytics || !automationAnalytics) {
     return (
       <div className="container mx-auto p-4 md:p-6 space-y-6">
-        <div className="text-center">Error loading analytics</div>
+        <div className="text-center space-y-4">
+          <h2 className="text-xl font-semibold">Analytics Not Available</h2>
+          <p className="text-muted-foreground">
+            Analytics data will appear here once your automations start processing messages.
+          </p>
+          <p className="text-sm text-muted-foreground">
+            Make sure you have:
+            <br />• Active automations configured
+            <br />• Instagram account connected
+            <br />• Recent DM or comment activity
+          </p>
+        </div>
       </div>
     )
+  }
+
+  // Provide safe defaults for undefined data
+  const safeOverview = {
+    summary: {
+      totalDms: overview?.summary?.totalDms || 0,
+      totalComments: overview?.summary?.totalComments || 0,
+      totalAutomations: overview?.summary?.totalAutomations || 0,
+      totalTriggers: overview?.summary?.totalTriggers || 0,
+      successfulDms: overview?.summary?.successfulDms || 0,
+      failedDms: overview?.summary?.failedDms || 0,
+      successRate: overview?.summary?.successRate || 0,
+      avgResponseTime: overview?.summary?.avgResponseTime || 0,
+      fastestResponse: overview?.summary?.fastestResponse || 0,
+      slowestResponse: overview?.summary?.slowestResponse || 0
+    },
+    dailyMetrics: overview?.dailyMetrics || []
+  }
+
+  // Check if there's any meaningful data
+  const hasData = safeOverview.summary.totalTriggers > 0 || safePostAnalytics.summary.totalPosts > 0 || safeAutomationAnalytics.summary.totalAutomations > 0
+
+  const safePostAnalytics = {
+    posts: postAnalytics?.posts || [],
+    summary: {
+      totalPosts: postAnalytics?.summary?.totalPosts || 0,
+      totalComments: postAnalytics?.summary?.totalComments || 0,
+      totalDmsSent: postAnalytics?.summary?.totalDmsSent || 0,
+      totalReplies: postAnalytics?.summary?.totalReplies || 0,
+      avgConversionRate: postAnalytics?.summary?.avgConversionRate || 0,
+      topPosts: postAnalytics?.summary?.topPosts || []
+    }
+  }
+
+  const safeAutomationAnalytics = {
+    automations: automationAnalytics?.automations || [],
+    summary: {
+      totalAutomations: automationAnalytics?.summary?.totalAutomations || 0,
+      activeAutomations: automationAnalytics?.summary?.activeAutomations || 0,
+      totalTriggers: automationAnalytics?.summary?.totalTriggers || 0,
+      totalDmsSent: automationAnalytics?.summary?.totalDmsSent || 0,
+      avgResponseTime: automationAnalytics?.summary?.avgResponseTime || 0,
+      topPerformer: automationAnalytics?.summary?.topPerformer || 'None'
+    }
   }
 
   const COLORS = ['#8884d8', '#82ca9d', '#ffc658', '#ff7300', '#0088fe']
@@ -219,6 +322,27 @@ export default function AnalyticsPage() {
         </div>
       </div>
 
+      {/* No Data Message */}
+      {!hasData && (
+        <Card className="w-full">
+          <CardContent className="p-6 text-center space-y-4">
+            <div className="text-6xl">📊</div>
+            <div>
+              <h3 className="text-lg font-semibold">No Analytics Data Yet</h3>
+              <p className="text-muted-foreground mt-2">
+                Analytics will appear here once your automations start processing Instagram messages and comments.
+              </p>
+            </div>
+            <div className="text-sm text-muted-foreground space-y-1">
+              <p><strong>To get started:</strong></p>
+              <p>1. Set up active automations in the Automations tab</p>
+              <p>2. Connect your Instagram account</p>
+              <p>3. Wait for users to comment or send DMs</p>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Overview Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <Card>
@@ -227,10 +351,10 @@ export default function AnalyticsPage() {
             <MessageSquare className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{overview.summary.totalDms.toLocaleString()}</div>
+            <div className="text-2xl font-bold">{safeOverview.summary.totalDms.toLocaleString()}</div>
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <Badge variant={overview.summary.successRate > 90 ? 'default' : 'secondary'}>
-                {overview.summary.successRate}% success
+              <Badge variant={safeOverview.summary.successRate > 90 ? 'default' : 'secondary'}>
+                {safeOverview.summary.successRate}% success
               </Badge>
             </div>
           </CardContent>
@@ -243,14 +367,14 @@ export default function AnalyticsPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {overview.summary.avgResponseTime < 1000 
-                ? `${overview.summary.avgResponseTime}ms`
-                : `${(overview.summary.avgResponseTime / 1000).toFixed(1)}s`
+              {safeOverview.summary.avgResponseTime < 1000 
+                ? `${safeOverview.summary.avgResponseTime}ms`
+                : `${(safeOverview.summary.avgResponseTime / 1000).toFixed(1)}s`
               }
             </div>
             <div className="text-sm text-muted-foreground">
-              {overview.summary.fastestResponse && (
-                <span>Fastest: {overview.summary.fastestResponse}ms</span>
+              {safeOverview.summary.fastestResponse > 0 && (
+                <span>Fastest: {safeOverview.summary.fastestResponse}ms</span>
               )}
             </div>
           </CardContent>
@@ -262,9 +386,9 @@ export default function AnalyticsPage() {
             <Activity className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{overview.summary.totalTriggers.toLocaleString()}</div>
+            <div className="text-2xl font-bold">{safeOverview.summary.totalTriggers.toLocaleString()}</div>
             <div className="text-sm text-muted-foreground">
-              {overview.summary.totalComments} comments processed
+              {safeOverview.summary.totalComments} comments processed
             </div>
           </CardContent>
         </Card>
@@ -275,9 +399,9 @@ export default function AnalyticsPage() {
             <Zap className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{automationAnalytics.summary.activeAutomations}</div>
+            <div className="text-2xl font-bold">{safeAutomationAnalytics.summary.activeAutomations}</div>
             <div className="text-sm text-muted-foreground">
-              of {automationAnalytics.summary.totalAutomations} total
+              of {safeAutomationAnalytics.summary.totalAutomations} total
             </div>
           </CardContent>
         </Card>
@@ -301,7 +425,7 @@ export default function AnalyticsPage() {
             <CardContent>
               <div className="h-[300px] sm:h-[400px]">
                 <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={overview.dailyMetrics}>
+                  <LineChart data={safeOverview.dailyMetrics}>
                     <CartesianGrid strokeDasharray="3 3" />
                     <XAxis dataKey="date" />
                     <YAxis yAxisId="left" />
@@ -327,8 +451,8 @@ export default function AnalyticsPage() {
                     <PieChart>
                       <Pie
                         data={[
-                          { name: 'Successful', value: overview.summary.successfulDms, color: '#22c55e' },
-                          { name: 'Failed', value: overview.summary.failedDms, color: '#ef4444' }
+                          { name: 'Successful', value: safeOverview.summary.successfulDms, color: '#22c55e' },
+                          { name: 'Failed', value: safeOverview.summary.failedDms, color: '#ef4444' }
                         ]}
                         cx="50%"
                         cy="50%"
@@ -337,8 +461,8 @@ export default function AnalyticsPage() {
                         label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
                       >
                         {[
-                          { name: 'Successful', value: overview.summary.successfulDms, color: '#22c55e' },
-                          { name: 'Failed', value: overview.summary.failedDms, color: '#ef4444' }
+                          { name: 'Successful', value: safeOverview.summary.successfulDms, color: '#22c55e' },
+                          { name: 'Failed', value: safeOverview.summary.failedDms, color: '#ef4444' }
                         ].map((entry, index) => (
                           <Cell key={`cell-${index}`} fill={entry.color} />
                         ))}
@@ -357,21 +481,21 @@ export default function AnalyticsPage() {
               <CardContent className="space-y-4">
                 <div className="flex justify-between items-center">
                   <span className="text-sm font-medium">Success Rate</span>
-                  <Badge variant={overview.summary.successRate > 90 ? 'default' : 'secondary'}>
-                    {overview.summary.successRate}%
+                  <Badge variant={safeOverview.summary.successRate > 90 ? 'default' : 'secondary'}>
+                    {safeOverview.summary.successRate}%
                   </Badge>
                 </div>
                 <div className="flex justify-between items-center">
                   <span className="text-sm font-medium">Fastest Response</span>
-                  <span className="text-sm">{overview.summary.fastestResponse}ms</span>
+                  <span className="text-sm">{safeOverview.summary.fastestResponse}ms</span>
                 </div>
                 <div className="flex justify-between items-center">
                   <span className="text-sm font-medium">Slowest Response</span>
-                  <span className="text-sm">{overview.summary.slowestResponse}ms</span>
+                  <span className="text-sm">{safeOverview.summary.slowestResponse}ms</span>
                 </div>
                 <div className="flex justify-between items-center">
                   <span className="text-sm font-medium">Total Triggers</span>
-                  <span className="text-sm font-semibold">{overview.summary.totalTriggers}</span>
+                  <span className="text-sm font-semibold">{safeOverview.summary.totalTriggers}</span>
                 </div>
               </CardContent>
             </Card>
@@ -388,7 +512,7 @@ export default function AnalyticsPage() {
             <CardContent>
               <div className="h-[300px] sm:h-[400px]">
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={postAnalytics.summary.topPosts}>
+                  <BarChart data={safePostAnalytics.summary.topPosts}>
                     <CartesianGrid strokeDasharray="3 3" />
                     <XAxis dataKey="postId" />
                     <YAxis />
@@ -408,7 +532,7 @@ export default function AnalyticsPage() {
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
-                {postAnalytics.posts.slice(0, 10).map((post) => (
+                {safePostAnalytics.posts.slice(0, 10).map((post) => (
                   <div key={post.postId} className="border rounded-lg p-4 space-y-2">
                     <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
                       <div>
@@ -436,7 +560,7 @@ export default function AnalyticsPage() {
         <TabsContent value="automations" className="space-y-4">
           {/* Automation Performance */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            {automationAnalytics.automations.slice(0, 6).map((automation) => (
+            {safeAutomationAnalytics.automations.slice(0, 6).map((automation) => (
               <Card key={automation.automation.id}>
                 <CardHeader>
                   <div className="flex justify-between items-start">
