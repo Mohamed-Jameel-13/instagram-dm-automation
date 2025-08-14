@@ -38,6 +38,55 @@ export async function GET(req: NextRequest) {
     // Get detailed breakdown for each post
     const postsWithDetails = await Promise.all(
       postAnalytics.map(async (post) => {
+        // Check if post needs enrichment and attempt to enrich it
+        if (!post.postThumbnail || !post.postCaption || post.postCaption.startsWith('Post ...')) {
+          console.log(`🔄 Attempting to enrich post ${post.postId} on-demand...`)
+          try {
+            // Get Instagram API access for enrichment
+            const account = await prisma.account.findFirst({
+              where: {
+                userId,
+                provider: "instagram",
+              },
+            })
+            
+            if (account?.access_token) {
+              const response = await fetch(
+                `https://graph.instagram.com/${post.postId}?fields=id,media_type,media_url,thumbnail_url,caption,permalink&access_token=${account.access_token}`,
+                {
+                  method: 'GET',
+                  headers: { 'User-Agent': 'InstagramBot/1.0' },
+                  timeout: 5000
+                }
+              )
+              
+              if (response.ok) {
+                const postData = await response.json()
+                const updateData = {
+                  postThumbnail: postData.thumbnail_url || postData.media_url || null,
+                  postCaption: postData.caption ? postData.caption.substring(0, 100) : null,
+                  postType: postData.media_type || null,
+                  updatedAt: new Date()
+                }
+                
+                // Update the post data
+                await prisma.postAnalytics.update({
+                  where: { postId: post.postId },
+                  data: updateData
+                })
+                
+                // Update the post object for immediate use
+                post.postThumbnail = updateData.postThumbnail
+                post.postCaption = updateData.postCaption
+                post.postType = updateData.postType
+                
+                console.log(`✅ Successfully enriched post ${post.postId} on-demand`)
+              }
+            }
+          } catch (error) {
+            console.log(`⚠️ Could not enrich post ${post.postId}:`, error)
+          }
+        }
         // Get recent DM analytics for this post (with AI separation)
         const recentDms = await prisma.dmAnalytics.findMany({
           where: {

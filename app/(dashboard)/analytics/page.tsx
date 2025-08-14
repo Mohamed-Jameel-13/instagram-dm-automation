@@ -31,7 +31,8 @@ import {
   Zap,
   Bot,
   MessageCircle,
-  Image
+  Image,
+  RefreshCw
 } from 'lucide-react'
 
 interface OverviewData {
@@ -191,6 +192,7 @@ export default function AnalyticsPage() {
   const [postAnalytics, setPostAnalytics] = useState<PostAnalytics | null>(null)
   const [automationAnalytics, setAutomationAnalytics] = useState<AutomationAnalytics | null>(null)
   const [loading, setLoading] = useState(true)
+  const [refreshingPosts, setRefreshingPosts] = useState(false)
   const [timeRange, setTimeRange] = useState('7')
 
   useEffect(() => {
@@ -267,6 +269,38 @@ export default function AnalyticsPage() {
       })
     } finally {
       setLoading(false)
+    }
+  }
+
+  const refreshPostData = async () => {
+    try {
+      setRefreshingPosts(true)
+      console.log('🔄 Refreshing post data...')
+      
+      const response = await fetch('/api/analytics/refresh-posts', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      })
+      
+      const result = await response.json()
+      
+      if (result.success) {
+        console.log(`✅ Refreshed ${result.enriched} posts`)
+        // Refetch analytics data to show updated information
+        await fetchAnalytics()
+        // Show success message (you could add a toast notification here)
+        alert(`Successfully refreshed ${result.enriched} posts with thumbnails and captions!`)
+      } else {
+        console.error('Failed to refresh posts:', result.error)
+        alert(`Error refreshing posts: ${result.error}`)
+      }
+    } catch (error) {
+      console.error('Error refreshing post data:', error)
+      alert('Failed to refresh post data. Please try again.')
+    } finally {
+      setRefreshingPosts(false)
     }
   }
 
@@ -592,6 +626,24 @@ export default function AnalyticsPage() {
         </TabsContent>
 
         <TabsContent value="posts" className="space-y-4">
+          {/* Refresh Posts Button */}
+          <div className="flex justify-between items-center">
+            <div>
+              <h3 className="text-lg font-semibold">Post Analytics</h3>
+              <p className="text-sm text-muted-foreground">Track post performance and engagement</p>
+            </div>
+            <Button 
+              onClick={refreshPostData} 
+              disabled={refreshingPosts}
+              variant="outline"
+              size="sm"
+              className="flex items-center gap-2"
+            >
+              <RefreshCw className={`h-4 w-4 ${refreshingPosts ? 'animate-spin' : ''}`} />
+              {refreshingPosts ? 'Refreshing...' : 'Refresh Post Data'}
+            </Button>
+          </div>
+
           {/* Top Posts Performance */}
           <Card>
             <CardHeader>
