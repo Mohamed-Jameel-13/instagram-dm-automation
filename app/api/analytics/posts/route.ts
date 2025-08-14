@@ -38,7 +38,7 @@ export async function GET(req: NextRequest) {
     // Get detailed breakdown for each post
     const postsWithDetails = await Promise.all(
       postAnalytics.map(async (post) => {
-        // Get recent DM analytics for this post
+        // Get recent DM analytics for this post (with AI separation)
         const recentDms = await prisma.dmAnalytics.findMany({
           where: {
             triggerSource: post.postId,
@@ -56,9 +56,15 @@ export async function GET(req: NextRequest) {
             responseTimeMs: true,
             status: true,
             sentAt: true,
-            messageLength: true
+            messageLength: true,
+            triggerType: true,
+            aiPrompt: true
           }
         })
+        
+        // Separate AI and regular DMs
+        const aiDms = recentDms.filter(dm => dm.triggerType === 'ai_dm')
+        const regularDms = recentDms.filter(dm => dm.triggerType === 'dm')
 
         // Get recent automation logs for this post
         const recentTriggers = await prisma.automationLog.findMany({
@@ -88,14 +94,20 @@ export async function GET(req: NextRequest) {
 
         return {
           postId: post.postId,
+          postThumbnail: post.postThumbnail,
+          postCaption: post.postCaption,
+          postType: post.postType,
           totalComments: post.totalComments,
           dmsSent: post.dmsSent,
+          aiDmsSent: post.aiDmsSent || 0,
           commentsReplied: post.commentsReplied,
           uniqueUsers: post.uniqueUsers,
           avgResponseTime: post.avgResponseTime ? Math.round(post.avgResponseTime) : null,
           conversionRate: Math.round(conversionRate * 100) / 100,
           lastActivity: post.lastActivity,
           recentDms,
+          aiDms,
+          regularDms,
           recentTriggers
         }
       })

@@ -869,25 +869,30 @@ async function sendInstagramMessage(
     // Calculate response time and log analytics
     const responseTime = Date.now() - startTime
     
-    // Log DM analytics
-    console.log(`📊 [${requestId}] Logging DM analytics: automationId=${automation.id}, userId=${automation.userId}, responseTime=${responseTime}ms`)
+    // Log DM analytics with AI distinction
+    const isAiGenerated = automation.actionType === "ai" && automation.aiPrompt
+    const dmType = isAiGenerated ? 'ai_dm' : 'dm'
+    console.log(`📊 [${requestId}] Logging ${dmType.toUpperCase()} analytics: automationId=${automation.id}, userId=${automation.userId}, responseTime=${responseTime}ms`)
     await AnalyticsLogger.logDmSent(
       automation.id,
       automation.userId,
       recipientId,
-      'dm',
+      dmType,
       triggerSource || null,
       responseMessage.length,
       responseTime,
-      'sent'
+      'sent',
+      undefined,
+      isAiGenerated ? automation.aiPrompt : undefined
     )
     
     // Update post analytics if triggered by comment
     if (triggerSource) {
+      const actionType = isAiGenerated ? 'ai_dm_sent' : 'dm_sent'
       await AnalyticsLogger.updatePostAnalytics(
         triggerSource,
         automation.userId,
-        'dm_sent',
+        actionType,
         responseTime
       )
     }
@@ -1458,6 +1463,49 @@ async function generateAIResponseWithContext(
 
 // Enhanced analytics logging
 class AnalyticsLogger {
+  // Fetch Instagram post details for analytics
+  static async enrichPostAnalytics(postId: string, userId: string) {
+    try {
+      // Get user's Instagram account
+      const account = await prisma.account.findFirst({
+        where: {
+          userId,
+          provider: "instagram",
+        },
+      })
+      
+      if (!account?.access_token) {
+        console.log(`No Instagram access token found for post enrichment: ${postId}`)
+        return
+      }
+      
+      // Fetch post details from Instagram API
+      const response = await fetch(
+        `https://graph.instagram.com/v18.0/${postId}?fields=id,media_type,media_url,thumbnail_url,caption,permalink&access_token=${account.access_token}`,
+        { timeout: 5000 }
+      )
+      
+      if (response.ok) {
+        const postData = await response.json()
+        
+        // Update PostAnalytics with enriched data
+        await prisma.postAnalytics.updateMany({
+          where: { postId },
+          data: {
+            postThumbnail: postData.thumbnail_url || postData.media_url || null,
+            postCaption: postData.caption ? postData.caption.substring(0, 100) : null,
+            postType: postData.media_type || null
+          }
+        })
+        
+        console.log(`🖼️ Enriched post analytics for ${postId} with thumbnail and caption`)
+      } else {
+        console.log(`Failed to fetch post details for ${postId}: ${response.status}`)
+      }
+    } catch (error) {
+      console.error(`Error enriching post analytics for ${postId}:`, error)
+    }
+  }
   static async logDmSent(
     automationId: string,
     userId: string,
@@ -1467,7 +1515,8 @@ class AnalyticsLogger {
     messageLength: number,
     responseTimeMs: number,
     status: 'sent' | 'failed' | 'rate_limited',
-    errorCode?: string
+    errorCode?: string,
+    aiPrompt?: string
   ) {
     try {
       await prisma.dmAnalytics.create({
@@ -1480,7 +1529,8 @@ class AnalyticsLogger {
           messageLength,
           responseTimeMs,
           status,
-          errorCode
+          errorCode,
+          aiPrompt
         }
       })
       console.log(`📊 DM Analytics: ${status} - ${responseTimeMs}ms`)
@@ -1492,7 +1542,7 @@ class AnalyticsLogger {
   static async updatePostAnalytics(
     postId: string | null,
     userId: string,
-    action: 'comment' | 'dm_sent' | 'comment_replied',
+    action: 'comment' | 'dm_sent' | 'ai_dm_sent' | 'comment_replied',
     responseTime?: number
   ) {
     try {
@@ -1514,6 +1564,8 @@ class AnalyticsLogger {
           updateData.totalComments = { increment: 1 }
         } else if (action === 'dm_sent') {
           updateData.dmsSent = { increment: 1 }
+        } else if (action === 'ai_dm_sent') {
+          updateData.aiDmsSent = { increment: 1 }
         } else if (action === 'comment_replied') {
           updateData.commentsReplied = { increment: 1 }
         }
@@ -1538,11 +1590,15 @@ class AnalyticsLogger {
             userId,
             totalComments: action === 'comment' ? 1 : 0,
             dmsSent: action === 'dm_sent' ? 1 : 0,
+            aiDmsSent: action === 'ai_dm_sent' ? 1 : 0,
             commentsReplied: action === 'comment_replied' ? 1 : 0,
             uniqueUsers: 1,
             avgResponseTime: responseTime || null
           }
         })
+        
+        // Enrich with Instagram post details (thumbnail, caption, etc.)
+        AnalyticsLogger.enrichPostAnalytics(postId, userId).catch(console.error)
       }
     } catch (error) {
       console.error('Error updating post analytics:', error)

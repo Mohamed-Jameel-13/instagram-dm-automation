@@ -151,12 +151,13 @@ model DmAnalytics {
   automationId     String
   userId           String   // Owner of the automation
   recipientId      String   // Instagram user who received DM
-  triggerType      String   // dm, comment, follow_comment
+  triggerType      String   // dm, ai_dm, comment, follow_comment
   triggerSource    String?  // postId if triggered by comment
   messageLength    Int
   responseTimeMs   Int      // Time from trigger to DM sent
   status           String   // sent, failed, rate_limited
   errorCode        String?
+  aiPrompt         String?  // AI prompt used if triggerType is 'ai_dm'
   sentAt           DateTime @default(now())
   
   @@index([automationId, sentAt])
@@ -170,9 +171,13 @@ model PostAnalytics {
   userId           String   // Owner of the automation
   totalComments    Int      @default(0)
   dmsSent          Int      @default(0)
+  aiDmsSent        Int      @default(0)  // Track AI DMs separately
   commentsReplied  Int      @default(0)
   uniqueUsers      Int      @default(0)
   avgResponseTime  Float?   // Average response time in milliseconds
+  postThumbnail    String?  // Instagram post thumbnail URL
+  postCaption      String?  // First 100 chars of post caption
+  postType         String?  // IMAGE, VIDEO, CAROUSEL_ALBUM, REELS
   lastActivity     DateTime @default(now())
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt

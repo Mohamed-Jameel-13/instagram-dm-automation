@@ -32,11 +32,29 @@ export async function GET(req: NextRequest) {
       }
     })
 
-    // Get total counts
-    const [totalDms, totalComments, totalAutomations] = await Promise.all([
+    // Get total counts with AI DM separation
+    const [totalDms, totalAiDms, totalRegularDms, totalComments, totalAutomations] = await Promise.all([
       prisma.dmAnalytics.count({
         where: {
           userId,
+          sentAt: {
+            gte: startDate
+          }
+        }
+      }),
+      prisma.dmAnalytics.count({
+        where: {
+          userId,
+          triggerType: 'ai_dm',
+          sentAt: {
+            gte: startDate
+          }
+        }
+      }),
+      prisma.dmAnalytics.count({
+        where: {
+          userId,
+          triggerType: 'dm',
           sentAt: {
             gte: startDate
           }
@@ -81,6 +99,8 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({
       summary: {
         totalDms,
+        totalAiDms,
+        totalRegularDms,
         totalComments,
         totalAutomations,
         totalTriggers,

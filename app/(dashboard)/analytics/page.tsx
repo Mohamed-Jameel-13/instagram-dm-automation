@@ -28,7 +28,10 @@ import {
   XCircle,
   TrendingUp,
   Target,
-  Zap
+  Zap,
+  Bot,
+  MessageCircle,
+  Image
 } from 'lucide-react'
 
 interface OverviewData {
