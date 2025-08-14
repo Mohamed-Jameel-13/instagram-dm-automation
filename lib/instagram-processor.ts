@@ -1483,7 +1483,7 @@ class AnalyticsLogger {
     try {
       if (!postId) return
       
-      console.log(`📊 Post Analytics: ${postId} - ${action} - ${responseTime}ms`)
+      console.log(`📊 Post Analytics: ${postId} - ${action} - ${responseTime || 'N/A'}ms`)
       
       const existing = await prisma.postAnalytics.findUnique({
         where: { postId }
