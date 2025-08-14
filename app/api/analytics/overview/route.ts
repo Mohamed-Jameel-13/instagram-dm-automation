@@ -51,10 +51,13 @@ export async function GET(req: NextRequest) {
           }
         }
       }),
+      // Count all non-AI DMs (dm, comment, follow_comment, etc.)
       prisma.dmAnalytics.count({
         where: {
           userId,
-          triggerType: 'dm',
+          triggerType: {
+            in: ['dm', 'comment', 'follow_comment']
+          },
           sentAt: {
             gte: startDate
           }
@@ -80,6 +83,14 @@ export async function GET(req: NextRequest) {
         }
       })
     ])
+
+    console.log(`📊 Overview Analytics Debug:`, {
+      totalDms,
+      totalAiDms,
+      totalRegularDms,
+      dateRange: `${startDate.toISOString()} to ${new Date().toISOString()}`,
+      userId
+    })
 
     // Calculate aggregated metrics with AI/Regular separation
     const totalTriggers = performanceMetrics.reduce((sum, metric) => sum + metric.totalTriggers, 0)
@@ -123,11 +134,13 @@ export async function GET(req: NextRequest) {
         select: { responseTimeMs: true }
       })
       
-      // Get Regular DM response times
+      // Get Regular DM response times (all non-AI DMs)
       const regularDms = await prisma.dmAnalytics.findMany({
         where: {
           userId,
-          triggerType: 'dm',
+          triggerType: {
+            in: ['dm', 'comment', 'follow_comment']
+          },
           status: 'sent',
           responseTimeMs: { gt: 0 },
           sentAt: { gte: startDate }

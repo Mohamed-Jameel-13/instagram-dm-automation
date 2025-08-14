@@ -593,12 +593,30 @@ export default function AnalyticsPage() {
                   size="sm"
                   className="border-yellow-300 bg-yellow-100 text-yellow-800 hover:bg-yellow-200 flex items-center gap-2"
                 >
-                  <RefreshCw className={`h-4 w-4 ${backfillingMetrics ? 'animate-spin' : ''}`} />
-                  {backfillingMetrics ? 'Fixing...' : 'Fix Response Times'}
-                </Button>
-              </div>
-            </div>
-          )}
+                                <RefreshCw className={`h-4 w-4 ${backfillingMetrics ? 'animate-spin' : ''}`} />
+              {backfillingMetrics ? 'Fixing...' : 'Fix Response Times'}
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* Debug Button - Remove after testing */}
+      <div className="bg-gray-50 border border-gray-200 rounded-lg p-3">
+        <div className="flex items-center justify-between">
+          <div>
+            <h4 className="font-medium text-gray-800">Debug DM Analytics</h4>
+            <p className="text-sm text-gray-600">Check what data is in the database</p>
+          </div>
+          <Button 
+            onClick={() => window.open(`/api/debug/dm-analytics?days=${timeRange}`, '_blank')} 
+            variant="outline"
+            size="sm"
+            className="text-gray-700"
+          >
+            View Debug Data
+          </Button>
+        </div>
+      </div>
 
           {/* Daily Performance Chart */}
           <Card>
