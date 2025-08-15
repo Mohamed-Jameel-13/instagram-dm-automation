@@ -433,8 +433,22 @@ async function sendDMWithRetry(account: any, recipientId: string, message: strin
         messaging_type: 'RESPONSE'
       } as any;
 
-      // 1) Primary FB Graph endpoint (Bearer token)
-      const fbResponse = await fetch(apiEndpoint, {
+      // 1) FB Graph with token as query param (most reliable for some setups)
+      const fbQueryEndpoint = `${apiEndpoint}?access_token=${encodeURIComponent(token)}`;
+      const fbQueryResp = await fetch(fbQueryEndpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(requestBody)
+      });
+      if (fbQueryResp.ok) {
+        console.log(`✅ [${requestId}] DM sent successfully (FB Graph query token)`);
+        return;
+      }
+      let errorText = await fbQueryResp.text();
+      console.error(`❌ [${requestId}] DM failed (attempt ${attempts + 1}, query):`, errorText);
+
+      // 2) FB Graph with Authorization header (Bearer)
+      const fbHeaderResp = await fetch(apiEndpoint, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -442,14 +456,12 @@ async function sendDMWithRetry(account: any, recipientId: string, message: strin
         },
         body: JSON.stringify(requestBody)
       });
-
-      if (fbResponse.ok) {
-        console.log(`✅ [${requestId}] DM sent successfully (FB Graph)`);
+      if (fbHeaderResp.ok) {
+        console.log(`✅ [${requestId}] DM sent successfully (FB Graph bearer)`);
         return;
       }
-
-      const errorText = await fbResponse.text();
-      console.error(`❌ [${requestId}] DM failed (attempt ${attempts + 1}):`, errorText);
+      errorText = await fbHeaderResp.text();
+      console.error(`❌ [${requestId}] DM failed (attempt ${attempts + 1}, bearer):`, errorText);
 
       // 2) If OAuth error, try Instagram Graph me/messages with token as query
       if (attempts === 0 && (errorText.includes('Invalid OAuth') || errorText.includes('access token'))) {
