@@ -217,6 +217,13 @@ export async function handleInstagramComment(commentData: any, requestId: string
         return { success: false, reason: 'No Instagram account' };
       }
       
+      // CRITICAL: Ensure this automation belongs to the IG account that fired the webhook
+      // This prevents using tokens from unrelated (e.g., test) accounts
+      const isAccountMatch = userInstagramAccount.providerAccountId === instagramAccountId;
+      if (!isAccountMatch) {
+        return { success: false, reason: 'Account mismatch' };
+      }
+      
       // OPTIMIZATION: Quick keyword matching without complex logic
       const keywords = automation.keywords.split(',').map(k => k.trim().toLowerCase());
       const hasMatchingKeyword = keywords.some(keyword => commentText.includes(keyword));
