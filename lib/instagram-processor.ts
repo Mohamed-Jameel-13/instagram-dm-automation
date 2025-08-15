@@ -11,6 +11,37 @@ const CACHE_TTL = 60 * 1000; // 60 seconds
 const automationCache = new Map<string, { data: any[], timestamp: number }>();
 const accountCache = new Map<string, { data: any[], timestamp: number }>();
 
+// Helper: robust keyword parser that accepts CSV or JSON array strings
+function parseKeywords(keywordField: any): string[] {
+  if (!keywordField) return [];
+  if (Array.isArray(keywordField)) {
+    return keywordField
+      .map((k: any) => String(k).trim().toLowerCase())
+      .filter(Boolean);
+  }
+  if (typeof keywordField === 'string') {
+    const raw = keywordField.trim();
+    // Try JSON array first: ["hi","hello"]
+    if ((raw.startsWith('[') && raw.endsWith(']')) || raw.includes('\"')) {
+      try {
+        const arr = JSON.parse(raw);
+        if (Array.isArray(arr)) {
+          return arr.map((k: any) => String(k).trim().toLowerCase()).filter(Boolean);
+        }
+      } catch (_) {
+        // fall through to CSV parsing
+      }
+    }
+    // CSV fallback: hi, hello | support newlines
+    return raw
+      .split(/[\n,]/)
+      .map(s => s.replace(/^[\s\[\"]+|[\s\]\"]+$/g, ''))
+      .map(s => s.trim().toLowerCase())
+      .filter(Boolean);
+  }
+  return [String(keywordField).trim().toLowerCase()];
+}
+
 // OPTIMIZATION: Cached automation rules lookup
 export async function getAutomationRules(userId?: string, active = true) {
   const cacheKey = `${userId || 'all'}_${active}`;
@@ -240,9 +271,11 @@ export async function handleInstagramComment(commentData: any, requestId: string
         return { success: false, reason: 'Account mismatch' };
       }
       
-      // OPTIMIZATION: Quick keyword matching without complex logic
-      const keywords = automation.keywords.split(',').map(k => k.trim().toLowerCase());
-      const hasMatchingKeyword = keywords.some(keyword => commentText.includes(keyword));
+      // Robust keyword parsing: supports CSV and JSON array strings
+      const keywords = parseKeywords(automation.keywords);
+      const hasMatchingKeyword = keywords.length === 0
+        ? false
+        : keywords.some(keyword => commentText.includes(keyword));
       
       if (!hasMatchingKeyword) {
         console.log(`ℹ️ [${requestId}] Skipping automation ${automation.id} - no keyword match for "${commentText}"`);
@@ -516,8 +549,10 @@ async function handleInstagramMessage(event: any, requestId: string, instagramAc
         const userInstagramAccount = accountMap.get(automation.userId);
         if (!userInstagramAccount) continue;
         
-        const keywords = automation.keywords.split(',').map(k => k.trim().toLowerCase());
-        const hasMatchingKeyword = keywords.some(keyword => messageText.includes(keyword));
+        const keywords = parseKeywords(automation.keywords);
+        const hasMatchingKeyword = keywords.length === 0
+          ? false
+          : keywords.some(keyword => messageText.includes(keyword));
         
         if (hasMatchingKeyword) {
           if (automation.actionType === "ai") {
