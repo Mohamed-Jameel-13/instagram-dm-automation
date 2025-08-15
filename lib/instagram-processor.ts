@@ -356,7 +356,8 @@ async function sendInstagramMessage(
     
     // Choose the best token/id for messaging (prefer a Facebook Page token if available)
     let tokenAccount = account as any;
-    let messagesId = account.providerAccountId || pageId;
+    // For Instagram messaging, the path id should be the Instagram account id from the webhook
+    let messagesId = pageId;
 
     const tokenLooksInvalid = !tokenAccount.access_token || String(tokenAccount.access_token).length < 60;
     const scopeStr = (tokenAccount.scope || '').toLowerCase();
@@ -369,8 +370,7 @@ async function sendInstagramMessage(
           select: { access_token: true, providerAccountId: true, scope: true }
         });
         if (fbAccount?.access_token) {
-          tokenAccount = fbAccount;
-          messagesId = fbAccount.providerAccountId || messagesId;
+          tokenAccount = fbAccount; // use Page token but keep IG user id in path
           console.log(`ℹ️ [${requestId}] Using Facebook page token fallback for messaging`);
         }
       } catch (_) {
