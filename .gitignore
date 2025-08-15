@@ -37,6 +37,23 @@ getInstagramInfo.js
 /load-test/
 webhook-load-tester.js
 
+# Performance testing files (exclude from production)
+test-*.js
+*-test.js
+benchmark-*.js
+debug-*.js
+performance-*.js
+test-environment*.json
+setup-test-*.sql
+setup-test-*.js
+create-test-*.js
+enable-optimizations.js
+prepare-for-production.js
+run-performance-tests.js
+
+# Testing directory
+/testing/
+
 # Markdown files (except README.md)
 *.md
 !README.md
@@ -96,3 +113,4 @@ dist/
 *.bak
 *.tmp
 .vercel
+run-performance-tests.js
