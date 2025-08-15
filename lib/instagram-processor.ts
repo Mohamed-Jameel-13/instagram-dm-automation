@@ -354,9 +354,33 @@ async function sendInstagramMessage(
       throw new Error("No message configured");
     }
     
+    // Choose the best token/id for messaging (prefer a Facebook Page token if available)
+    let tokenAccount = account as any;
+    let messagesId = account.providerAccountId || pageId;
+
+    const tokenLooksInvalid = !tokenAccount.access_token || String(tokenAccount.access_token).length < 60;
+    const scopeStr = (tokenAccount.scope || '').toLowerCase();
+    const missingMessagingScope = scopeStr && !scopeStr.includes('pages_messaging') && !scopeStr.includes('instagram_manage_messages');
+
+    if (tokenLooksInvalid || missingMessagingScope) {
+      try {
+        const fbAccount = await prisma.account.findFirst({
+          where: { userId: automation.userId, provider: 'facebook' },
+          select: { access_token: true, providerAccountId: true, scope: true }
+        });
+        if (fbAccount?.access_token) {
+          tokenAccount = fbAccount;
+          messagesId = fbAccount.providerAccountId || messagesId;
+          console.log(`ℹ️ [${requestId}] Using Facebook page token fallback for messaging`);
+        }
+      } catch (_) {
+        // ignore fallback errors; we will attempt with original token
+      }
+    }
+
     // OPTIMIZATION: Send DM and handle conversation in parallel
     const tasks: Promise<any>[] = [
-      sendDMWithRetry(account, recipientId, responseMessage, requestId)
+      sendDMWithRetry(tokenAccount, recipientId, responseMessage, requestId, 2, messagesId)
     ];
     
     if (automation.actionType === "ai") {
@@ -388,58 +412,96 @@ async function sendInstagramMessage(
 }
 
 // OPTIMIZATION: Faster DM sending with optimized retry logic
-async function sendDMWithRetry(account: any, recipientId: string, message: string, requestId: string, maxRetries = 2) {
+async function sendDMWithRetry(account: any, recipientId: string, message: string, requestId: string, maxRetries = 2, messagesIdOverride?: string) {
   let attempts = 0;
-  
+
   while (attempts < maxRetries) {
     try {
-      const token = account.access_token.trim().replace(/\s+/g, '').replace(/["'`]/g, '');
-      const apiEndpoint = `https://graph.facebook.com/v18.0/${account.providerAccountId}/messages`;
-      
+      const rawToken = String(account.access_token || '').trim();
+      if (!rawToken) throw new Error('Missing access token');
+
+      const token = rawToken; // do not strip characters beyond trim
+      const idForMessages = messagesIdOverride || account.providerAccountId;
+      const apiEndpoint = `https://graph.facebook.com/v18.0/${idForMessages}/messages`;
+
       const requestBody = {
         recipient: { id: recipientId },
         message: { text: message },
         messaging_type: 'RESPONSE'
-      };
-      
-      // OPTIMIZATION: Optimized fetch with shorter timeout
-      const response = await fetch(apiEndpoint, {
+      } as any;
+
+      // 1) Primary FB Graph endpoint (Bearer token)
+      const fbResponse = await fetch(apiEndpoint, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
         },
-        body: JSON.stringify(requestBody),
-        // OPTIMIZATION: Shorter timeout for faster failures
-        signal: AbortSignal.timeout(5000) // 5 second timeout
+        body: JSON.stringify(requestBody)
       });
-      
-      if (response.ok) {
-        console.log(`✅ [${requestId}] DM sent successfully`);
+
+      if (fbResponse.ok) {
+        console.log(`✅ [${requestId}] DM sent successfully (FB Graph)`);
         return;
       }
-      
-      const errorText = await response.text();
+
+      const errorText = await fbResponse.text();
       console.error(`❌ [${requestId}] DM failed (attempt ${attempts + 1}):`, errorText);
-      
-      // OPTIMIZATION: Faster retry with shorter delays
-      attempts++;
-      if (attempts < maxRetries) {
-        const delay = 200 + (attempts * 100); // Much shorter delays
-        await new Promise(resolve => setTimeout(resolve, delay));
+
+      // 2) If OAuth error, try Instagram Graph me/messages with token as query
+      if (attempts === 0 && (errorText.includes('Invalid OAuth') || errorText.includes('access token'))) {
+        try {
+          const igApiEndpoint = `https://graph.instagram.com/v18.0/me/messages?access_token=${encodeURIComponent(token)}`;
+          const igResponse = await fetch(igApiEndpoint, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(requestBody),
+          });
+          if (igResponse.ok) {
+            console.log(`✅ [${requestId}] DM sent successfully (IG Graph me/messages)`);
+            return;
+          }
+
+          // 3) Try form-encoded variant which some tokens require
+          const formBody = new URLSearchParams();
+          formBody.set('recipient', JSON.stringify({ id: recipientId }));
+          formBody.set('message', JSON.stringify({ text: message }));
+          formBody.set('messaging_type', 'RESPONSE');
+
+          const formResponse = await fetch(apiEndpoint, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/x-www-form-urlencoded',
+              'Authorization': `Bearer ${token}`
+            },
+            body: formBody as any,
+          });
+
+          if (formResponse.ok) {
+            console.log(`✅ [${requestId}] DM sent successfully (form-encoded)`);
+            return;
+          }
+        } catch (fallbackErr) {
+          console.error(`⚠️ [${requestId}] Fallback attempts failed:`, fallbackErr);
+        }
       }
-      
-    } catch (error) {
+
       attempts++;
-      console.error(`💥 [${requestId}] DM error (attempt ${attempts}):`, error);
-      
       if (attempts < maxRetries) {
-        const delay = 300 * attempts; // Faster exponential backoff
-        await new Promise(resolve => setTimeout(resolve, delay));
+        const delay = 500 + attempts * 200;
+        await new Promise(res => setTimeout(res, delay));
+      }
+
+    } catch (err) {
+      attempts++;
+      console.error(`💥 [${requestId}] DM error (attempt ${attempts}):`, err);
+      if (attempts < maxRetries) {
+        const delay = Math.pow(2, attempts) * 500;
+        await new Promise(res => setTimeout(res, delay));
       }
     }
   }
-  
+
   throw new Error(`Failed to send DM after ${maxRetries} attempts`);
 }
 
