@@ -196,9 +196,17 @@ export async function handleInstagramComment(commentData: any, requestId: string
       getAccounts()
     ]);
     
-    const commentAutomations = automations.filter(a => 
-      a.triggerType === "comment" || a.triggerType === "follow_comment"
+    // Limit automations to the Instagram account that fired this webhook
+    const allowedUserIds = new Set(
+      accountsData
+        .filter(acc => acc.providerAccountId === instagramAccountId)
+        .map(acc => acc.userId)
     );
+
+    const commentAutomations = automations.filter(a => (
+      (a.triggerType === "comment" || a.triggerType === "follow_comment") &&
+      allowedUserIds.has(a.userId)
+    ));
     
     if (commentAutomations.length === 0) {
       console.log(`ℹ️ [${requestId}] No active comment automations found`);
@@ -221,6 +229,7 @@ export async function handleInstagramComment(commentData: any, requestId: string
       // This prevents using tokens from unrelated (e.g., test) accounts
       const isAccountMatch = userInstagramAccount.providerAccountId === instagramAccountId;
       if (!isAccountMatch) {
+        console.log(`ℹ️ [${requestId}] Skipping automation ${automation.id} due to account mismatch`);
         return { success: false, reason: 'Account mismatch' };
       }
       
@@ -229,6 +238,7 @@ export async function handleInstagramComment(commentData: any, requestId: string
       const hasMatchingKeyword = keywords.some(keyword => commentText.includes(keyword));
       
       if (!hasMatchingKeyword) {
+        console.log(`ℹ️ [${requestId}] Skipping automation ${automation.id} - no keyword match for "${commentText}"`);
         return { success: false, reason: 'No keyword match' };
       }
       
