@@ -420,7 +420,10 @@ async function sendDMWithRetry(account: any, recipientId: string, message: strin
       const rawToken = String(account.access_token || '').trim();
       if (!rawToken) throw new Error('Missing access token');
 
-      const token = rawToken; // do not strip characters beyond trim
+      // Sanitize common formatting issues without altering valid chars
+      const token = rawToken
+        .replace(/[\r\n\t\f\v\s]+/g, '') // remove all whitespace/newlines
+        .replace(/^["'`]+|["'`]+$/g, '');   // strip surrounding quotes/backticks
       const idForMessages = messagesIdOverride || account.providerAccountId;
       const apiEndpoint = `https://graph.facebook.com/v18.0/${idForMessages}/messages`;
 
