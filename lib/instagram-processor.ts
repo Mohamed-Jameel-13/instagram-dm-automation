@@ -12,7 +12,7 @@ const automationCache = new Map<string, { data: any[], timestamp: number }>();
 const accountCache = new Map<string, { data: any[], timestamp: number }>();
 
 // OPTIMIZATION: Cached automation rules lookup
-export async function getAutomationRulesOptimized(userId?: string, active = true) {
+export async function getAutomationRules(userId?: string, active = true) {
   const cacheKey = `${userId || 'all'}_${active}`;
   const cached = automationCache.get(cacheKey);
   
@@ -57,7 +57,7 @@ export async function getAutomationRulesOptimized(userId?: string, active = true
 }
 
 // OPTIMIZATION: Cached account lookup
-async function getAccountsOptimized() {
+async function getAccounts() {
   const cacheKey = 'instagram_accounts';
   const cached = accountCache.get(cacheKey);
   
@@ -97,7 +97,7 @@ async function batchDatabaseOperations(operations: Promise<any>[]) {
 }
 
 // OPTIMIZATION: Main event processor with parallel processing
-export async function processInstagramEventOptimized(eventData: any) {
+export async function processInstagramEvent(eventData: any) {
   const { requestId, body } = eventData;
   const startTime = Date.now();
   
@@ -115,7 +115,7 @@ export async function processInstagramEventOptimized(eventData: any) {
           // Handle Direct Messages
           if (entry.messaging) {
             entry.messaging.forEach((event: any) => {
-              promises.push(handleInstagramMessageOptimized(event, requestId, instagramAccountId));
+              promises.push(handleInstagramMessage(event, requestId, instagramAccountId));
             });
           }
           
@@ -126,7 +126,7 @@ export async function processInstagramEventOptimized(eventData: any) {
                 const value = change.value;
                 const hasText = !!(value?.text || value?.message);
                 if (hasText) {
-                  promises.push(handleInstagramCommentOptimized(value, requestId, instagramAccountId));
+                  promises.push(handleInstagramComment(value, requestId, instagramAccountId));
                 }
               }
             });
@@ -146,7 +146,7 @@ export async function processInstagramEventOptimized(eventData: any) {
 }
 
 // OPTIMIZATION: Optimized comment handler with reduced database calls
-export async function handleInstagramCommentOptimized(commentData: any, requestId: string, instagramAccountId: string) {
+export async function handleInstagramComment(commentData: any, requestId: string, instagramAccountId: string) {
   const startTime = Date.now();
   
   if (!commentData || (!commentData.text && !commentData.message)) {
@@ -192,8 +192,8 @@ export async function handleInstagramCommentOptimized(commentData: any, requestI
   try {
     // OPTIMIZATION: Get cached data in parallel
     const [automations, accountsData] = await Promise.all([
-      getAutomationRulesOptimized(undefined, true),
-      getAccountsOptimized()
+      getAutomationRules(undefined, true),
+      getAccounts()
     ]);
     
     const commentAutomations = automations.filter(a => 
@@ -230,22 +230,22 @@ export async function handleInstagramCommentOptimized(commentData: any, requestI
         const processStartTime = Date.now();
         
         if (automation.actionType === 'dm' || automation.message) {
-          await sendInstagramMessageOptimized(commenterId, automation, instagramAccountId, requestId, userInstagramAccount, postId);
+          await sendInstagramMessage(commenterId, automation, instagramAccountId, requestId, userInstagramAccount, postId);
           
           // OPTIMIZATION: Send comment reply in parallel if needed
           if (automation.commentReply && automation.commentReply.trim() !== "") {
             // Don't await - let it run in background
-            replyToCommentWithRetryOptimized(userInstagramAccount, commentId, automation.commentReply, requestId)
+            replyToCommentWithRetry(userInstagramAccount, commentId, automation.commentReply, requestId)
               .catch(error => console.error(`Comment reply error: ${error.message}`));
           }
         } else {
-          await replyToInstagramCommentOptimized(commentId, automation, commenterId, requestId, postId);
+          await replyToInstagramComment(commentId, automation, commenterId, requestId, postId);
         }
         
         const processingTime = Date.now() - processStartTime;
         
         // OPTIMIZATION: Log automation trigger asynchronously
-        logAutomationTriggerOptimized(automation.id, "comment", rawText, commenterId, processingTime)
+        logAutomationTrigger(automation.id, "comment", rawText, commenterId, processingTime)
           .catch(error => console.error(`Logging error: ${error.message}`));
         
         return { success: true, processingTime };
@@ -270,7 +270,7 @@ export async function handleInstagramCommentOptimized(commentData: any, requestI
 }
 
 // OPTIMIZATION: Optimized message sending with reduced latency
-async function sendInstagramMessageOptimized(
+async function sendInstagramMessage(
   recipientId: string, 
   automation: any, 
   pageId: string, 
@@ -299,7 +299,7 @@ async function sendInstagramMessageOptimized(
     
     // OPTIMIZATION: Send DM and handle conversation in parallel
     const tasks: Promise<any>[] = [
-      sendDMWithRetryOptimized(account, recipientId, responseMessage, requestId)
+      sendDMWithRetry(account, recipientId, responseMessage, requestId)
     ];
     
     if (automation.actionType === "ai") {
@@ -321,7 +321,7 @@ async function sendInstagramMessageOptimized(
     
     // OPTIMIZATION: Log analytics asynchronously
     const isAiGenerated = automation.actionType === "ai" && automation.aiPrompt;
-    logDMAnalyticsOptimized(automation, recipientId, triggerSource, responseTime, isAiGenerated)
+    logDMAnalytics(automation, recipientId, triggerSource, responseTime, isAiGenerated)
       .catch(error => console.error(`Analytics logging error: ${error.message}`));
     
   } catch (error) {
@@ -331,7 +331,7 @@ async function sendInstagramMessageOptimized(
 }
 
 // OPTIMIZATION: Faster DM sending with optimized retry logic
-async function sendDMWithRetryOptimized(account: any, recipientId: string, message: string, requestId: string, maxRetries = 2) {
+async function sendDMWithRetry(account: any, recipientId: string, message: string, requestId: string, maxRetries = 2) {
   let attempts = 0;
   
   while (attempts < maxRetries) {
@@ -387,7 +387,7 @@ async function sendDMWithRetryOptimized(account: any, recipientId: string, messa
 }
 
 // OPTIMIZATION: Asynchronous logging functions
-async function logAutomationTriggerOptimized(automationId: string, triggerType: string, triggerText: string, userId: string, processingTime?: number) {
+async function logAutomationTrigger(automationId: string, triggerType: string, triggerText: string, userId: string, processingTime?: number) {
   // Run in background without blocking main flow
   setImmediate(async () => {
     try {
@@ -406,7 +406,7 @@ async function logAutomationTriggerOptimized(automationId: string, triggerType: 
   });
 }
 
-async function logDMAnalyticsOptimized(automation: any, recipientId: string, triggerSource?: string, responseTime?: number, isAiGenerated?: boolean) {
+async function logDMAnalytics(automation: any, recipientId: string, triggerSource?: string, responseTime?: number, isAiGenerated?: boolean) {
   // Run in background
   setImmediate(async () => {
     try {
@@ -429,7 +429,7 @@ async function logDMAnalyticsOptimized(automation: any, recipientId: string, tri
 }
 
 // OPTIMIZATION: Optimized comment reply with faster processing
-async function replyToCommentWithRetryOptimized(account: any, commentId: string, message: string, requestId: string, maxRetries = 2) {
+async function replyToCommentWithRetry(account: any, commentId: string, message: string, requestId: string, maxRetries = 2) {
   let attempts = 0;
   
   while (attempts < maxRetries) {
@@ -468,7 +468,7 @@ async function replyToCommentWithRetryOptimized(account: any, commentId: string,
 }
 
 // OPTIMIZATION: Optimized DM handler (simplified version of comment handler)
-async function handleInstagramMessageOptimized(event: any, requestId: string, instagramAccountId: string) {
+async function handleInstagramMessage(event: any, requestId: string, instagramAccountId: string) {
   if (event.message && event.message.text && !event.message.is_echo) {
     const messageText = event.message.text.toLowerCase();
     const senderId = event.sender.id;
@@ -476,8 +476,8 @@ async function handleInstagramMessageOptimized(event: any, requestId: string, in
     
     try {
       const [automations, accountsData] = await Promise.all([
-        getAutomationRulesOptimized(undefined, true),
-        getAccountsOptimized()
+        getAutomationRules(undefined, true),
+        getAccounts()
       ]);
       
       const dmAutomations = automations.filter(a => a.triggerType === "dm");
@@ -501,9 +501,9 @@ async function handleInstagramMessageOptimized(event: any, requestId: string, in
               .catch(error => console.error('Conversation start error:', error));
           }
           
-          await sendInstagramMessageOptimized(senderId, automation, recipientId, requestId, userInstagramAccount);
+          await sendInstagramMessage(senderId, automation, recipientId, requestId, userInstagramAccount);
           
-          logAutomationTriggerOptimized(automation.id, "dm", messageText, senderId)
+          logAutomationTrigger(automation.id, "dm", messageText, senderId)
             .catch(error => console.error('DM logging error:', error));
           break;
         }
@@ -516,7 +516,7 @@ async function handleInstagramMessageOptimized(event: any, requestId: string, in
 }
 
 // OPTIMIZATION: Simplified comment reply function
-async function replyToInstagramCommentOptimized(commentId: string, automation: any, commenterId: string, requestId: string, postId?: string) {
+async function replyToInstagramComment(commentId: string, automation: any, commenterId: string, requestId: string, postId?: string) {
   const isRealInstagramUser = commenterId && commenterId !== 'debug_user_123' && !commenterId.startsWith('test_') && commenterId.length > 10;
   
   if (!isRealInstagramUser) {
@@ -546,10 +546,10 @@ async function replyToInstagramCommentOptimized(commentId: string, automation: a
       responseMessage = automation.message;
     }
     
-    await replyToCommentWithRetryOptimized(account, commentId, responseMessage, requestId);
+    await replyToCommentWithRetry(account, commentId, responseMessage, requestId);
     
     // Log asynchronously
-    logAutomationTriggerOptimized(automation.id, automation.triggerType, responseMessage, commenterId)
+    logAutomationTrigger(automation.id, automation.triggerType, responseMessage, commenterId)
       .catch(error => console.error('Comment reply logging error:', error));
     
   } catch (error) {
