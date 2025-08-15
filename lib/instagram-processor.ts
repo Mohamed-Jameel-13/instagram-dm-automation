@@ -196,17 +196,24 @@ export async function handleInstagramComment(commentData: any, requestId: string
       getAccounts()
     ]);
     
-    // Limit automations to the Instagram account that fired this webhook
-    const allowedUserIds = new Set(
-      accountsData
-        .filter(acc => acc.providerAccountId === instagramAccountId)
-        .map(acc => acc.userId)
-    );
+    // Limit automations to the Instagram account that fired this webhook.
+    // If we don't find a matching account id (IG user id vs business id mismatch),
+    // fall back to all users' automations to avoid false negatives.
+    const matchingAccounts = accountsData.filter(acc => acc.providerAccountId === instagramAccountId);
+    const hasMatchingAccount = matchingAccounts.length > 0;
+    const allowedUserIds = new Set(matchingAccounts.map(acc => acc.userId));
 
-    const commentAutomations = automations.filter(a => (
-      (a.triggerType === "comment" || a.triggerType === "follow_comment") &&
-      allowedUserIds.has(a.userId)
+    const baseAutomations = automations.filter(a => (
+      a.triggerType === "comment" || a.triggerType === "follow_comment"
     ));
+
+    const commentAutomations = hasMatchingAccount
+      ? baseAutomations.filter(a => allowedUserIds.has(a.userId))
+      : baseAutomations;
+
+    if (!hasMatchingAccount) {
+      console.log(`ℹ️ [${requestId}] No account matched instagramAccountId=${instagramAccountId}. Using fallback (all users).`);
+    }
     
     if (commentAutomations.length === 0) {
       console.log(`ℹ️ [${requestId}] No active comment automations found`);
@@ -228,7 +235,7 @@ export async function handleInstagramComment(commentData: any, requestId: string
       // CRITICAL: Ensure this automation belongs to the IG account that fired the webhook
       // This prevents using tokens from unrelated (e.g., test) accounts
       const isAccountMatch = userInstagramAccount.providerAccountId === instagramAccountId;
-      if (!isAccountMatch) {
+      if (hasMatchingAccount && !isAccountMatch) {
         console.log(`ℹ️ [${requestId}] Skipping automation ${automation.id} due to account mismatch`);
         return { success: false, reason: 'Account mismatch' };
       }
