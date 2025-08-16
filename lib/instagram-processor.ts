@@ -309,7 +309,7 @@ export async function handleInstagramComment(commentData: any, requestId: string
         
       } catch (error) {
         console.error(`Automation ${automation.id} failed:`, error);
-        return { success: false, error: error.message };
+        return { success: false, error: error instanceof Error ? error.message : String(error) };
       }
     });
     
@@ -333,7 +333,8 @@ async function sendInstagramMessage(
   pageId: string, 
   requestId: string, 
   account?: any,
-  triggerSource?: string
+  triggerSource?: string,
+  customPrompt?: string
 ) {
   const startTime = Date.now();
   
@@ -345,9 +346,10 @@ async function sendInstagramMessage(
     let responseMessage = "";
     
     // OPTIMIZATION: Parallel AI generation and DM preparation
-    if (automation.actionType === "ai" && automation.aiPrompt) {
-      // Generate AI response
-      responseMessage = await generateAIResponse(automation.aiPrompt, automation.message || "Thanks for reaching out!");
+    if (automation.actionType === "ai" && (customPrompt || automation.aiPrompt)) {
+      // Use custom prompt for conversation context or default AI prompt
+      const promptToUse = customPrompt || automation.aiPrompt;
+      responseMessage = await generateAIResponse(promptToUse, automation.message || "Thanks for reaching out!");
     } else if (automation.message) {
       responseMessage = automation.message;
     } else {
@@ -570,6 +572,8 @@ async function replyToCommentWithRetry(account: any, commentId: string, message:
     try {
       const token = account.access_token.trim().replace(/\s+/g, '').replace(/["'`]/g, '');
       
+      console.log(`💬 [${requestId}] Attempting comment reply (attempt ${attempts + 1}/${maxRetries}) for comment ${commentId}`);
+      
       const response = await fetch(`https://graph.facebook.com/v18.0/${commentId}/replies`, {
         method: 'POST',
         headers: {
@@ -581,9 +585,17 @@ async function replyToCommentWithRetry(account: any, commentId: string, message:
       });
       
       if (response.ok) {
-        console.log(`✅ [${requestId}] Comment reply sent`);
+        const result = await response.json();
+        console.log(`✅ [${requestId}] Comment reply sent successfully:`, result);
         return;
       }
+      
+      const errorText = await response.text();
+      console.error(`❌ [${requestId}] Comment reply failed (attempt ${attempts + 1}):`, {
+        status: response.status,
+        statusText: response.statusText,
+        error: errorText
+      });
       
       attempts++;
       if (attempts < maxRetries) {
@@ -591,6 +603,7 @@ async function replyToCommentWithRetry(account: any, commentId: string, message:
       }
       
     } catch (error) {
+      console.error(`💥 [${requestId}] Comment reply error (attempt ${attempts + 1}):`, error);
       attempts++;
       if (attempts < maxRetries) {
         await new Promise(resolve => setTimeout(resolve, 300 * attempts));
@@ -601,7 +614,7 @@ async function replyToCommentWithRetry(account: any, commentId: string, message:
   console.error(`❌ [${requestId}] Comment reply failed after ${maxRetries} attempts`);
 }
 
-// OPTIMIZATION: Optimized DM handler (simplified version of comment handler)
+// OPTIMIZATION: Optimized DM handler with conversation support
 async function handleInstagramMessage(event: any, requestId: string, instagramAccountId: string) {
   if (event.message && event.message.text && !event.message.is_echo) {
     const messageText = event.message.text.toLowerCase();
@@ -621,27 +634,83 @@ async function handleInstagramMessage(event: any, requestId: string, instagramAc
       const accountMap = new Map();
       accountsData.forEach(acc => accountMap.set(acc.userId, acc));
       
-      // Process first matching automation only for speed
+      // Step 1: Check if user is in an active AI conversation with any automation
+      let foundActiveConversation = false;
+      
       for (const automation of dmAutomations) {
         const userInstagramAccount = accountMap.get(automation.userId);
         if (!userInstagramAccount) continue;
         
-        const keywords = parseKeywords(automation.keywords);
-        const hasMatchingKeyword = keywords.length === 0
-          ? false
-          : keywords.some(keyword => messageText.includes(keyword));
-        
-        if (hasMatchingKeyword) {
-          if (automation.actionType === "ai") {
-            ConversationManager.startConversation(automation.userId, senderId, automation.id, messageText)
-              .catch(error => console.error('Conversation start error:', error));
+        if (automation.actionType === "ai") {
+          const conversationStatus = await ConversationManager.isInActiveConversation(
+            automation.userId, 
+            senderId
+          );
+          
+          if (conversationStatus.isActive && conversationStatus.automationId === automation.id) {
+            console.log(`💬 [${requestId}] Continuing AI conversation for user ${senderId} with automation ${automation.id}`);
+            
+            // Add user message to conversation
+            await ConversationManager.addMessageToConversation(
+              automation.userId,
+              senderId,
+              automation.id,
+              "user",
+              event.message.text
+            );
+            
+            // Generate contextual AI response using conversation history
+            const context = await ConversationManager.getConversationContext(
+              automation.userId,
+              senderId,
+              automation.id
+            );
+            
+            if (context && context.messages.length > 0) {
+              // Build conversation context for AI
+              const conversationHistory = context.messages
+                .slice(-10) // Last 10 messages for context
+                .map(msg => `${msg.role}: ${msg.content}`)
+                .join('\n');
+                
+              const aiPrompt = `${automation.aiPrompt}\n\nConversation history:\n${conversationHistory}\n\nUser: ${event.message.text}\n\nPlease respond naturally continuing this conversation:`;
+              
+              await sendInstagramMessage(senderId, automation, recipientId, requestId, userInstagramAccount, "conversation", aiPrompt);
+            }
+            
+            logAutomationTrigger(automation.id, "dm_conversation", event.message.text, senderId)
+              .catch(error => console.error('DM conversation logging error:', error));
+            
+            foundActiveConversation = true;
+            break;
           }
+        }
+      }
+      
+      // Step 2: If no active conversation, check for keyword matches to start new conversations
+      if (!foundActiveConversation) {
+        for (const automation of dmAutomations) {
+          const userInstagramAccount = accountMap.get(automation.userId);
+          if (!userInstagramAccount) continue;
           
-          await sendInstagramMessage(senderId, automation, recipientId, requestId, userInstagramAccount);
+          const keywords = parseKeywords(automation.keywords);
+          const hasMatchingKeyword = keywords.length === 0
+            ? false
+            : keywords.some(keyword => messageText.includes(keyword));
           
-          logAutomationTrigger(automation.id, "dm", messageText, senderId)
-            .catch(error => console.error('DM logging error:', error));
-          break;
+          if (hasMatchingKeyword) {
+            console.log(`🚀 [${requestId}] Starting new automation for user ${senderId} with automation ${automation.id}`);
+            
+            if (automation.actionType === "ai") {
+              await ConversationManager.startConversation(automation.userId, senderId, automation.id, event.message.text);
+            }
+            
+            await sendInstagramMessage(senderId, automation, recipientId, requestId, userInstagramAccount, "keyword_trigger");
+            
+            logAutomationTrigger(automation.id, "dm", event.message.text, senderId)
+              .catch(error => console.error('DM logging error:', error));
+            break;
+          }
         }
       }
       
