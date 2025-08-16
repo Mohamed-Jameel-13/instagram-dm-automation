@@ -292,7 +292,8 @@ export async function handleInstagramComment(commentData: any, requestId: string
           // OPTIMIZATION: Send comment reply in parallel if needed
           if (automation.commentReply && automation.commentReply.trim() !== "") {
             // Don't await - let it run in background
-            replyToCommentWithRetry(userInstagramAccount, commentId, automation.commentReply, requestId)
+            const accountWithUserId = { ...userInstagramAccount, automationUserId: automation.userId };
+            replyToCommentWithRetry(accountWithUserId, commentId, automation.commentReply, requestId)
               .catch(error => console.error(`Comment reply error: ${error.message}`));
           }
         } else {
@@ -564,36 +565,102 @@ async function logDMAnalytics(automation: any, recipientId: string, triggerSourc
   });
 }
 
-// OPTIMIZATION: Optimized comment reply with faster processing
+// OPTIMIZATION: Optimized comment reply with fallback logic (similar to DM sending)
 async function replyToCommentWithRetry(account: any, commentId: string, message: string, requestId: string, maxRetries = 2) {
   let attempts = 0;
   
   while (attempts < maxRetries) {
     try {
-      const token = account.access_token.trim().replace(/\s+/g, '').replace(/["'`]/g, '');
+      const rawToken = String(account.access_token || '').trim();
+      if (!rawToken) throw new Error('Missing access token');
+
+      // Sanitize token similar to DM sending
+      const token = rawToken
+        .replace(/[\r\n\t\f\v\s]+/g, '') // remove all whitespace/newlines
+        .replace(/^["'`]+|["'`]+$/g, '');   // strip surrounding quotes/backticks
       
       console.log(`💬 [${requestId}] Attempting comment reply (attempt ${attempts + 1}/${maxRetries}) for comment ${commentId}`);
       
-      const response = await fetch(`https://graph.facebook.com/v18.0/${commentId}/replies`, {
+      // 1) Try Facebook Graph API with Bearer token (standard approach)
+      const fbBearerResponse = await fetch(`https://graph.facebook.com/v18.0/${commentId}/replies`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
         },
         body: JSON.stringify({ message }),
-        signal: AbortSignal.timeout(5000) // 5 second timeout
+        signal: AbortSignal.timeout(5000)
       });
       
-      if (response.ok) {
-        const result = await response.json();
-        console.log(`✅ [${requestId}] Comment reply sent successfully:`, result);
+      if (fbBearerResponse.ok) {
+        const result = await fbBearerResponse.json();
+        console.log(`✅ [${requestId}] Comment reply sent successfully (FB Bearer):`, result);
         return;
       }
       
-      const errorText = await response.text();
+      let errorText = await fbBearerResponse.text();
+      console.log(`⚠️ [${requestId}] FB Bearer failed:`, errorText);
+      
+      // 2) Try Facebook Graph API with token as query parameter
+      const fbQueryResponse = await fetch(`https://graph.facebook.com/v18.0/${commentId}/replies?access_token=${encodeURIComponent(token)}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message }),
+        signal: AbortSignal.timeout(5000)
+      });
+      
+      if (fbQueryResponse.ok) {
+        const result = await fbQueryResponse.json();
+        console.log(`✅ [${requestId}] Comment reply sent successfully (FB Query):`, result);
+        return;
+      }
+      
+      errorText = await fbQueryResponse.text();
+      console.log(`⚠️ [${requestId}] FB Query failed:`, errorText);
+      
+      // 3) If OAuth error and we have a Facebook page token, try with that
+      if (attempts === 0 && (errorText.includes('Invalid OAuth') || errorText.includes('access token'))) {
+        try {
+          // Look for Facebook page token as fallback
+          // We need to find the userId from the automation context
+          const userId = account.userId || account.automationUserId;
+          const fbAccount = await prisma.account.findFirst({
+            where: { 
+              userId: userId,
+              provider: 'facebook' 
+            },
+            select: { access_token: true, scope: true }
+          });
+          
+          if (fbAccount?.access_token) {
+            const fbToken = fbAccount.access_token.trim().replace(/[\r\n\t\f\v\s]+/g, '').replace(/^["'`]+|["'`]+$/g, '');
+            console.log(`🔄 [${requestId}] Trying Facebook page token for comment reply`);
+            
+            const fbPageResponse = await fetch(`https://graph.facebook.com/v18.0/${commentId}/replies?access_token=${encodeURIComponent(fbToken)}`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ message }),
+              signal: AbortSignal.timeout(5000)
+            });
+            
+            if (fbPageResponse.ok) {
+              const result = await fbPageResponse.json();
+              console.log(`✅ [${requestId}] Comment reply sent successfully (FB Page token):`, result);
+              return;
+            }
+            
+            const fbPageError = await fbPageResponse.text();
+            console.log(`⚠️ [${requestId}] FB Page token failed:`, fbPageError);
+          }
+        } catch (fallbackError) {
+          console.log(`⚠️ [${requestId}] Fallback token lookup failed:`, fallbackError);
+        }
+      }
+      
+      // Log the final error for this attempt
       console.error(`❌ [${requestId}] Comment reply failed (attempt ${attempts + 1}):`, {
-        status: response.status,
-        statusText: response.statusText,
+        status: fbQueryResponse.status,
+        statusText: fbQueryResponse.statusText,
         error: errorText
       });
       
@@ -751,7 +818,8 @@ async function replyToInstagramComment(commentId: string, automation: any, comme
       responseMessage = automation.message;
     }
     
-    await replyToCommentWithRetry(account, commentId, responseMessage, requestId);
+    const accountWithUserId = { ...account, automationUserId: automation.userId };
+    await replyToCommentWithRetry(accountWithUserId, commentId, responseMessage, requestId);
     
     // Log asynchronously
     logAutomationTrigger(automation.id, automation.triggerType, responseMessage, commenterId)
