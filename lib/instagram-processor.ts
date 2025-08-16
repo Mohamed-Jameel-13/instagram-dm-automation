@@ -620,17 +620,27 @@ async function replyToCommentWithRetry(account: any, commentId: string, message:
       
       // 3) If OAuth error and we have a Facebook page token, try with that
       if (attempts === 0 && (errorText.includes('Invalid OAuth') || errorText.includes('access token'))) {
+        console.log(`🔍 [${requestId}] OAuth error detected, attempting Facebook page token fallback...`);
         try {
           // Look for Facebook page token as fallback
           // We need to find the userId from the automation context
           const userId = account.userId || account.automationUserId;
+          console.log(`🔍 [${requestId}] Looking for Facebook account for userId: ${userId}`);
+          
+          if (!userId) {
+            console.log(`⚠️ [${requestId}] No userId found in account object:`, Object.keys(account));
+            throw new Error('No userId available for Facebook account lookup');
+          }
+          
           const fbAccount = await prisma.account.findFirst({
             where: { 
               userId: userId,
               provider: 'facebook' 
             },
-            select: { access_token: true, scope: true }
+            select: { access_token: true, scope: true, userId: true, providerAccountId: true }
           });
+          
+          console.log(`🔍 [${requestId}] Facebook account lookup result:`, fbAccount ? 'Found' : 'Not found');
           
           if (fbAccount?.access_token) {
             const fbToken = fbAccount.access_token.trim().replace(/[\r\n\t\f\v\s]+/g, '').replace(/^["'`]+|["'`]+$/g, '');
@@ -651,10 +661,32 @@ async function replyToCommentWithRetry(account: any, commentId: string, message:
             
             const fbPageError = await fbPageResponse.text();
             console.log(`⚠️ [${requestId}] FB Page token failed:`, fbPageError);
+          } else {
+            console.log(`⚠️ [${requestId}] No Facebook page token found for userId: ${userId}`);
           }
+          
+          // 4) Try Instagram Graph API (like DM sending does) - this might work!
+          console.log(`🔄 [${requestId}] Trying Instagram Graph API for comment reply`);
+          const igApiResponse = await fetch(`https://graph.instagram.com/v18.0/${commentId}/replies?access_token=${encodeURIComponent(token)}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ message }),
+            signal: AbortSignal.timeout(5000)
+          });
+          
+          if (igApiResponse.ok) {
+            const result = await igApiResponse.json();
+            console.log(`✅ [${requestId}] Comment reply sent successfully (IG Graph API):`, result);
+            return;
+          }
+          
+          const igApiError = await igApiResponse.text();
+          console.log(`⚠️ [${requestId}] IG Graph API failed:`, igApiError);
         } catch (fallbackError) {
           console.log(`⚠️ [${requestId}] Fallback token lookup failed:`, fallbackError);
         }
+      } else {
+        console.log(`🔍 [${requestId}] Fallback conditions not met: attempts=${attempts}, hasOAuthError=${errorText.includes('Invalid OAuth') || errorText.includes('access token')}`);
       }
       
       // Log the final error for this attempt
