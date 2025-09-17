@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Instagram Token Account Checker</title>
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 800px; margin: 50px auto; padding: 20px; }
+        .container { background: #f5f5f5; padding: 20px; border-radius: 8px; margin: 10px 0; }
+        .error { background: #ffebee; border-left: 4px solid #f44336; }
+        .success { background: #e8f5e9; border-left: 4px solid #4caf50; }
+        .warning { background: #fff3e0; border-left: 4px solid #ff9800; }
+        input, button { padding: 10px; margin: 5px; border: 1px solid #ccc; border-radius: 4px; }
+        input[type="text"] { width: 100%; max-width: 500px; }
+        button { background: #2196f3; color: white; cursor: pointer; }
+        button:hover { background: #1976d2; }
+        .result { margin-top: 20px; }
+        .code { background: #f4f4f4; padding: 10px; border-radius: 4px; font-family: monospace; margin: 10px 0; }
+    </style>
+</head>
+<body>
+    <h1>🔍 Instagram Token Account Checker</h1>
+    
+    <div class="container warning">
+        <h3>⚠️ The Problem</h3>
+        <p><strong>Webhooks come from account:</strong> <code>17841473518392752</code></p>
+        <p><strong>Your stored account:</strong> <code>24695355950081100</code></p>
+        <p><strong>These don't match!</strong> You need a token for account <code>17841473518392752</code></p>
+    </div>
+
+    <div class="container">
+        <h3>Test Your Access Token</h3>
+        <p>App URL: <input type="text" id="appUrl" value="https://instagram-dm-automation.vercel.app" placeholder="Your app URL" style="width: 300px;" /></p>
+        <p>Enter your Instagram/Facebook access token to check which account it belongs to:</p>
+        <input type="text" id="tokenInput" placeholder="Paste your access token here (EAAC... or IGQVJ... or IGAAR...)" />
+        <button onclick="checkToken()">Check Token</button>
+        <button onclick="manualCheck()">Manual Check Instructions</button>
+        
+        <div id="result" class="result"></div>
+    </div>
+
+    <div class="container">
+        <h3>📋 How to Get the Correct Token</h3>
+        <ol>
+            <li><strong>Go to Facebook Developers Console:</strong> <a href="https://developers.facebook.com/apps" target="_blank">developers.facebook.com/apps</a></li>
+            <li><strong>Select your Instagram app</strong></li>
+            <li><strong>Go to Tools & Support > Graph API Explorer</strong></li>
+            <li><strong>Generate User Access Token</strong> with these permissions:
+                <div class="code">instagram_basic, instagram_manage_comments, instagram_manage_messages, pages_show_list, pages_read_engagement</div>
+            </li>
+            <li><strong>Test it with this tool</strong> - it should show account ID <code>17841473518392752</code></li>
+            <li><strong>Use that token to reconnect</strong> in your app</li>
+        </ol>
+    </div>
+
+    <script>
+        async function checkToken() {
+            const token = document.getElementById('tokenInput').value.trim();
+            const appUrl = document.getElementById('appUrl').value.trim();
+            const resultDiv = document.getElementById('result');
+            
+            if (!token) {
+                resultDiv.innerHTML = '<div class="container error">Please enter a token</div>';
+                return;
+            }
+
+            if (!appUrl) {
+                resultDiv.innerHTML = '<div class="container error">Please enter your app URL</div>';
+                return;
+            }
+
+            resultDiv.innerHTML = '<div class="container">🔄 Checking token...</div>';
+
+            try {
+                const url = appUrl.endsWith('/') ? appUrl + 'api/identify-accounts' : appUrl + '/api/identify-accounts';
+                const response = await fetch(url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ accessToken: token })
+                });
+
+                const data = await response.json();
+                
+                if (data.success) {
+                    let html = `<div class="container">
+                        <h4>🔍 Token Analysis</h4>
+                        <p><strong>Token Type:</strong> ${data.summary.tokenType}</p>
+                        <p><strong>Accounts Found:</strong> ${data.summary.accountsFound}</p>
+                    `;
+
+                    // Show accounts
+                    html += '<h5>📱 Accounts This Token Can Access:</h5>';
+                    data.results.accounts.forEach(acc => {
+                        html += `<div class="code">
+                            <strong>ID:</strong> ${acc.id}<br>
+                            <strong>Username:</strong> ${acc.username || 'N/A'}<br>
+                            <strong>Type:</strong> ${acc.account_type || 'N/A'}<br>
+                            <strong>Source:</strong> ${acc.note}
+                        </div>`;
+                    });
+
+                    // Show analysis
+                    const isCorrect = data.analysis.matchesWebhook;
+                    html += `<div class="container ${isCorrect ? 'success' : 'error'}">
+                        <h5>${isCorrect ? '✅' : '❌'} Recommendation</h5>
+                        <p>${data.analysis.recommendation}</p>
+                    </div>`;
+
+                    resultDiv.innerHTML = html;
+                } else {
+                    resultDiv.innerHTML = `<div class="container error">
+                        <h4>❌ Error</h4>
+                        <p>${data.error}</p>
+                        ${data.details ? `<p><small>${data.details}</small></p>` : ''}
+                    </div>`;
+                }
+            } catch (error) {
+                resultDiv.innerHTML = `<div class="container error">
+                    <h4>💥 Network Error</h4>
+                    <p>Could not check token. Make sure you're connected to your app.</p>
+                </div>`;
+            }
+        }
+
+        function manualCheck() {
+            const token = document.getElementById('tokenInput').value.trim();
+            const resultDiv = document.getElementById('result');
+            
+            if (!token) {
+                resultDiv.innerHTML = '<div class="container error">Please enter a token first</div>';
+                return;
+            }
+
+            let html = `<div class="container">
+                <h4>🔍 Manual Token Check Instructions</h4>
+                <p>Copy and paste these URLs into your browser to check which account your token belongs to:</p>
+                
+                <h5>1. Check Facebook/Business API (for EAAC tokens):</h5>
+                <div class="code">
+                    <a href="https://graph.facebook.com/me?fields=id,username,account_type&access_token=${token}" target="_blank">
+                        https://graph.facebook.com/me?fields=id,username,account_type&access_token=${token}
+                    </a>
+                </div>
+                
+                <h5>2. Check Instagram Basic Display API (for IGQVJ/IGAAR tokens):</h5>
+                <div class="code">
+                    <a href="https://graph.instagram.com/me?fields=id,username&access_token=${token}" target="_blank">
+                        https://graph.instagram.com/me?fields=id,username&access_token=${token}
+                    </a>
+                </div>
+
+                <h5>3. Check Facebook Pages (if Business token works):</h5>
+                <div class="code">
+                    <a href="https://graph.facebook.com/v18.0/me/accounts?access_token=${token}" target="_blank">
+                        https://graph.facebook.com/v18.0/me/accounts?access_token=${token}
+                    </a>
+                </div>
+            </div>
+
+            <div class="container warning">
+                <h5>⚠️ What to Look For:</h5>
+                <ul>
+                    <li><strong>The account ID should be:</strong> <code>17841473518392752</code></li>
+                    <li><strong>Username should be:</strong> <code>paper_decoration_artist</code></li>
+                    <li><strong>If you see a different ID</strong>, you need to get a token for the correct account</li>
+                    <li><strong>If APIs return errors</strong>, the token might be expired or invalid</li>
+                </ul>
+            </div>`;
+
+            resultDiv.innerHTML = html;
+        }
+
+        // Allow Enter key to submit
+        document.getElementById('tokenInput').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') checkToken();
+        });
+    </script>
+</body>
+</html>
