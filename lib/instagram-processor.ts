@@ -158,13 +158,15 @@ async function handleInstagramMessage(event: any, requestId: string, instagramAc
           console.log(`✅ [${requestId}] Instagram account match confirmed: ${userInstagramAccount.providerAccountId}`)
         }
         
-        // Check if business account
-        const isBusinessAccount = userInstagramAccount.scope?.includes("instagram_manage_messages") || 
-                                  userInstagramAccount.scope?.includes("instagram_manage_comments")
-        
-        if (!isBusinessAccount) {
-          console.log(`❌ [${requestId}] Instagram account ${userInstagramAccount.providerAccountId} doesn't have business permissions`)
-          continue
+        // Universal Instagram account support - works with Personal, Creator, and Business
+        const hasBusinessPermissions = userInstagramAccount.scope?.includes("instagram_manage_messages") || 
+                                       userInstagramAccount.scope?.includes("instagram_manage_comments")
+
+        const accountType = hasBusinessPermissions ? "Business" : "Personal/Creator"
+        console.log(`📱 [${requestId}] Instagram account ${userInstagramAccount.providerAccountId} detected as ${accountType} account`)
+
+        if (!hasBusinessPermissions) {
+          console.log(`ℹ️ [${requestId}] Personal/Creator account - will attempt API calls with available permissions`)
         }
         
         if (automation.actionType === "ai") {
@@ -335,13 +337,15 @@ export async function handleInstagramComment(commentData: any, requestId: string
           continue
         }
         
-        // Check if business account
-        const isBusinessAccount = userInstagramAccount.scope?.includes("instagram_manage_messages") || 
-                                  userInstagramAccount.scope?.includes("instagram_manage_comments")
-        
-        if (!isBusinessAccount) {
-          console.log(`❌ [${requestId}] Instagram account ${userInstagramAccount.providerAccountId} doesn't have business permissions`)
-          continue
+        // Universal Instagram account support - works with Personal, Creator, and Business
+        const hasBusinessPermissions = userInstagramAccount.scope?.includes("instagram_manage_messages") || 
+                                       userInstagramAccount.scope?.includes("instagram_manage_comments")
+
+        const accountType = hasBusinessPermissions ? "Business" : "Personal/Creator"
+        console.log(`📱 [${requestId}] Instagram account ${userInstagramAccount.providerAccountId} detected as ${accountType} account`)
+
+        if (!hasBusinessPermissions) {
+          console.log(`ℹ️ [${requestId}] Personal/Creator account - will attempt API calls with available permissions`)
         }
         
         // CRITICAL CHECK: Ensure the webhook account matches the stored account
