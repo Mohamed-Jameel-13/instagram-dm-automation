@@ -782,14 +782,19 @@ async function replyToInstagramComment(commentId: string, automation: any, comme
     GlobalDuplicatePrevention.markMessageSent(commentId, commenterId, automation.id, responseMessage)
     console.log(`🔒 [${requestId}] Message marked in global duplicate prevention system`)
     
-    // Optional: Send comment reply if specifically configured (TEMPORARILY DISABLED for debugging)
-    if (false && automation.commentReply && automation.commentReply.trim() !== "") {
-      console.log(`💬 [${requestId}] Public comment reply disabled for debugging - would send: "${automation.commentReply}"`)
-      // await replyToCommentWithRetry(account, commentId, automation.commentReply, requestId)
-    } else if (automation.commentReply) {
-      console.log(`💬 [${requestId}] Public comment reply configured but disabled for debugging: "${automation.commentReply}"`)
+    // Send public comment reply if specifically configured
+    if (automation.commentReply && automation.commentReply.trim() !== "") {
+      console.log(`💬 [${requestId}] Sending public comment reply: "${automation.commentReply}"`)
+      
+      try {
+        await replyToCommentWithRetry(account, commentId, automation.commentReply, requestId)
+        console.log(`✅ [${requestId}] Public comment reply sent successfully`)
+      } catch (replyError) {
+        console.error(`❌ [${requestId}] Public comment reply failed:`, replyError)
+        console.log(`🔄 [${requestId}] Continuing with private DM as fallback`)
+      }
     } else {
-      console.log(`💬 [${requestId}] No public comment reply configured (this is normal for DM-only automations)`)
+      console.log(`💬 [${requestId}] No public comment reply configured (DM-only automation)`)
     }
     
   } catch (error) {
